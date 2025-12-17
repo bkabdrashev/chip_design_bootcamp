@@ -9,3 +9,11 @@ The goal of this Bootcamp is to design RISC-V chip.
 - [x] Lab 3: Encoder
 - [x] Lab 4: Logic Unit
 - [x] Lab 5: Timers
+
+## Day 2: 8-bit CPU in Logisim
+
+- [x] PC
+- [x] Instruction Decoder
+- [x] ROM
+- [x] ALU
+- [x] Register File
