@@ -26,3 +26,13 @@ The goal of this Bootcamp is to design RISC-V chip.
 - [x] ALU
 - [x] Register File
 - [x] Test Bench
+
+## Day 4: Golden Model; 32-bit miniRV in Verilog
+
+- [x] Golden Model for small CPU of Day 3
+- [x] Per tick difftesting
+- [x] miniRV 8 instruction
+- [x] RAM
+- [x] ROM
+- [x] Golden Model for miniRV
+- [ ] Randomized difftesting

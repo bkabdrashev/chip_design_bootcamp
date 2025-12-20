@@ -5,6 +5,7 @@
 #define ERROR_NOT_IMPLEMENTED (1010)
 #define ERROR_INVALID_RANGE   (2020)
 #define OPCODE_BITS 7u
+#define FUNCT3_BITS 3u
 #define REG_INDEX_BITS 5u
 #define ADDR_BITS 32u
 #define REG_BITS 32u
@@ -24,11 +25,14 @@ struct Trigger {
 struct opcode_size_t {
   uint32_t v : OPCODE_BITS;
 };
+struct funct3_size_t {
+  uint32_t v : OPCODE_BITS;
+};
 struct addr_size_t {
   uint32_t v : ADDR_BITS;
 };
 struct reg_index_t {
-  uint32_t v : REG_BITS;
+  int32_t v : REG_BITS;
 };
 struct reg_size_t {
   uint32_t v : REG_BITS;
@@ -158,6 +162,7 @@ struct Dec_out {
   reg_index_t reg_src2;
   reg_size_t imm;
   opcode_size_t opcode;
+  funct3_size_t funct3;
   bit write_enable;
 };
 
@@ -165,6 +170,7 @@ Dec_out dec_eval(inst_size_t inst) {
   Dec_out out = {};
   out.opcode.v = take_bits_range(inst.v, 0, 6);
   out.reg_dest.v = take_bits_range(inst.v, 7, 11);
+  out.funct3.v = take_bits_range(inst.v, 12, 14);
   out.reg_src1.v = take_bits_range(inst.v, 15, 19);
   out.reg_src2.v = take_bits_range(inst.v, 20, 24);
   bit sign = {.v=take_bit(inst.v, 31)};
@@ -279,8 +285,17 @@ void cpu_eval(miniRV* cpu, Trigger clock, Trigger reset) {
     in_addr.v = 0;
     is_jump.v = 0;
   }
-  else if (dec_out.opcode.v == 0b0000011) {
+  else if (dec_out.opcode.v == 0b0000011 && dec_out.funct3.v == 0b010) {
     // LW
+    ram_write_enable.v = 0;
+    ram_addr.v = rf_out.rdata1.v + dec_out.imm.v;
+    ram_write_data.v = 0;
+    write_data = ram_read(cpu, ram_addr);
+    in_addr.v = 0;
+    is_jump.v = 0;
+  }
+  else if (dec_out.opcode.v == 0b0000011 && dec_out.funct3.v == 0b100) {
+    // LBU
     ram_write_enable.v = 0;
     ram_addr.v = rf_out.rdata1.v + dec_out.imm.v;
     ram_write_data.v = 0;

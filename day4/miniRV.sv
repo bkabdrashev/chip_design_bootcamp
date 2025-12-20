@@ -22,6 +22,7 @@ module miniRV (
   logic [31:0] dec_imm;
   logic        dec_wen;
   logic [6:0]  dec_opcode;
+  logic [2:0]  dec_funct3;
 
   logic is_pc_jump;
   logic [31:0]  pc_addr;
@@ -38,6 +39,7 @@ module miniRV (
   logic [31:0] ram_addr;
   logic [31:0] ram_wdata;
   logic [31:0] ram_rdata;
+  logic [3:0]  ram_wstrb;
 
   pc u_pc(
     .clk(clk),
@@ -48,8 +50,8 @@ module miniRV (
   );
 
   // TODO: write to ram/rom
-  ram64k ram(.clk(clk), .wen(ram_wen), .wdata(ram_wdata), .addr(ram_addr), .read_data(ram_rdata));
-  ram64k rom(.clk(clk), .wen(rom_wen), .wdata(rom_wdata), .addr(rom_addr_or_pc), .read_data(inst));
+  ram64k ram(.clk(clk), .wen(ram_wen), .wdata(ram_wdata), .wstrb(ram_wstrb), .addr(ram_addr), .read_data(ram_rdata));
+  ram64k rom(.clk(clk), .wen(rom_wen), .wdata(rom_wdata), .wstrb(4'b1111), .addr(rom_addr_or_pc), .read_data(inst));
 
   dec u_dec(
     .inst(inst),
@@ -59,7 +61,8 @@ module miniRV (
     .rs2(dec_rs2),
     .imm(dec_imm),
     .wen(dec_wen),
-    .opcode(dec_opcode)
+    .opcode(dec_opcode),
+    .funct3(dec_funct3)
   );
 
   alu u_alu(
@@ -101,6 +104,7 @@ module miniRV (
       ram_wen = 0;
       ram_addr = 0;
       ram_wdata = 0;
+      ram_wstrb = 4'b0000;
     end else begin
       rom_addr_or_pc = pc;
       if (dec_opcode == 7'b0010011) begin
@@ -108,6 +112,7 @@ module miniRV (
         ram_wen = 0;
         ram_addr = 0;
         ram_wdata = 0;
+        ram_wstrb = 4'b0000;
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -116,6 +121,7 @@ module miniRV (
         ram_wen = 0;
         ram_addr = 0;
         ram_wdata = 0;
+        ram_wstrb = 0;
         pc_addr = (rdata1 + dec_imm) & ~1;
         wdata = pc+4;
         is_pc_jump = 1;
@@ -124,6 +130,7 @@ module miniRV (
         ram_wen = 0;
         ram_addr = 0;
         ram_wdata = 0;
+        ram_wstrb = 4'b0000;
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -132,22 +139,43 @@ module miniRV (
         ram_wen = 0;
         ram_addr = 0;
         ram_wdata = 0;
+        ram_wstrb = 4'b0000;
         wdata = dec_imm;
         pc_addr = 0;
         is_pc_jump = 0;
-      end else if (dec_opcode == 7'b0000011) begin
+      end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b010) begin
         // LW
         ram_wen = 0;
         ram_addr = rdata1 + dec_imm;
         ram_wdata = 0;
+        ram_wstrb = 4'b0000;
         wdata = ram_rdata;
         pc_addr = 0;
         is_pc_jump = 0;
-      end else if (dec_opcode == 7'b0100011) begin
+      end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b100) begin
+        // LBU
+        ram_wen = 0;
+        ram_addr = rdata1 + dec_imm;
+        ram_wdata = 0;
+        ram_wstrb = 0;
+        wdata = ram_rdata & 32'hff;
+        pc_addr = 0;
+        is_pc_jump = 0;
+      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b100) begin
         // SW
         ram_wen = 1;
         ram_addr = rdata1 + dec_imm;
         ram_wdata = rdata2;
+        ram_wstrb = 4'b1111;
+        wdata = 0;
+        pc_addr = 0;
+        is_pc_jump = 0;
+      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b000) begin
+        // SB
+        ram_wen = 1;
+        ram_addr = rdata1 + dec_imm;
+        ram_wdata = rdata2 & 32'hff;
+        ram_wstrb = 4'b0001;
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -156,6 +184,7 @@ module miniRV (
         ram_wen = 0;
         ram_addr = 0;
         ram_wdata = 0;
+        ram_wstrb = 4'b0000;
         wdata = 0;
         pc_addr = 0;
         wdata = 0;
