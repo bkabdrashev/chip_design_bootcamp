@@ -2,16 +2,10 @@ module miniRV (
   input logic reset,
   input logic clk,
   input logic rom_wen,
+  input logic rom_reset,
   input logic [31:0] rom_wdata,
   input logic [31:0] rom_addr,
-  output logic [31:0] reg0,
-  output logic [31:0] reg1,
-  output logic [31:0] reg2,
-  output logic [31:0] reg3,
-  output logic [31:0] reg4,
-  output logic [31:0] reg5,
-  output logic [31:0] reg6,
-  output logic [31:0] reg7,
+  output logic [31:0] regs_out [0:15],
   output logic [31:0] pc,
   output logic [31:0] inst
 );
@@ -49,9 +43,8 @@ module miniRV (
     .out_addr(pc)
   );
 
-  // TODO: write to ram/rom
-  ram64k ram(.clk(clk), .wen(ram_wen), .wdata(ram_wdata), .wstrb(ram_wstrb), .addr(ram_addr), .read_data(ram_rdata));
-  ram64k rom(.clk(clk), .wen(rom_wen), .wdata(rom_wdata), .wstrb(4'b1111), .addr(rom_addr_or_pc), .read_data(inst));
+  ram64k ram(.clk(clk), .reset(reset), .wen(ram_wen), .wdata(ram_wdata), .wstrb(ram_wstrb), .addr(ram_addr), .read_data(ram_rdata));
+  ram64k rom(.clk(clk), .reset(rom_reset), .wen(rom_wen), .wdata(rom_wdata), .wstrb(4'b1111), .addr(rom_addr_or_pc), .read_data(inst));
 
   dec u_dec(
     .inst(inst),
@@ -85,14 +78,7 @@ module miniRV (
 
     .rdata1(rdata1),
     .rdata2(rdata2),
-    .reg_out0(reg0),
-    .reg_out1(reg1),
-    .reg_out2(reg2),
-    .reg_out3(reg3),
-    .reg_out4(reg4),
-    .reg_out5(reg5),
-    .reg_out6(reg6),
-    .reg_out7(reg7) 
+    .regs_out(regs_out)
   );
 
   always_comb begin
@@ -122,8 +108,8 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 0;
-        pc_addr = (rdata1 + dec_imm) & ~1;
         wdata = pc+4;
+        pc_addr = (rdata1 + dec_imm) & ~3;
         is_pc_jump = 1;
       end else if (dec_opcode == 7'b0110011) begin
         // ADD
@@ -161,7 +147,7 @@ module miniRV (
         wdata = ram_rdata & 32'hff;
         pc_addr = 0;
         is_pc_jump = 0;
-      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b100) begin
+      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b010) begin
         // SW
         ram_wen = 1;
         ram_addr = rdata1 + dec_imm;
