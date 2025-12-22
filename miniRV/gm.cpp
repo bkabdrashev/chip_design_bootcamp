@@ -10,8 +10,8 @@
 #define REG_BITS 32u
 #define BYTE 8u
 #define INST_BITS 32u
-#define ROM_SIZE (1u << 16) // 64K
-#define RAM_SIZE (1u << 16) // 64K
+#define ROM_SIZE (0x30000000) // 64K
+#define RAM_SIZE (0x30000000) // 64K
 #define N_REGS 16u
 
 #define OPCODE_ADDI  (0b0010011)
@@ -78,9 +78,21 @@ reg_size_t REG_VALUE_0 = {};
 struct miniRV {
   addr_size_t pc;
   reg_size_t regs[N_REGS];
-  byte rom[ROM_SIZE];
-  byte ram[RAM_SIZE];
+  byte* rom;
+  byte* ram;
 };
+
+int32_t sar32(uint32_t u, unsigned shift) {
+  assert(shift < 32);
+
+  if (shift == 0) return (u & 0x80000000u) ? -int32_t((~u) + 1u) : int32_t(u);
+
+  uint32_t shifted = u >> shift;      
+  if (u & 0x80000000u) {
+    shifted |= (~0u << (32 - shift)); 
+  }
+  return static_cast<int32_t>(shifted);
+}
 
 uint32_t take_bit(uint32_t bits, uint32_t pos) {
   if (pos >= REG_BITS) {
@@ -157,6 +169,7 @@ void mem_write(byte* mem, Trigger clock, Trigger reset, bit write_enable, bit4 w
     }
   }
   else if (is_positive_edge(clock)) {
+    // printf("mem[%x] write: %u\n", addr.v, write_data.v);
     if (write_enable.v && addr.v < max_addr_size) {
       if (write_enable_bytes.bits[0].v) {
         mem[addr.v + 0].v = (write_data.v & (0xff << 0)) >> 0;
@@ -280,7 +293,60 @@ Dec_out dec_eval(inst_size_t inst) {
   return out;
 }
 
-void cpu_eval(miniRV* cpu, Trigger clock, Trigger reset) {
+void print_instruction(inst_size_t inst) {
+  Dec_out dec = dec_eval(inst);
+  switch (dec.opcode.v) {
+    case OPCODE_ADDI: {
+      printf("addi imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+    } break;
+    case OPCODE_JALR: {
+      printf("jalr imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+    } break;
+    case OPCODE_ADD: { // ADD
+      printf("add  rs2=r%u\t rs1=r%u\t rd=r%u\n", dec.reg_src2.v, dec.reg_src1.v, dec.reg_dest.v);
+    } break;
+    case OPCODE_LUI: { // LUI
+      uint32_t v = sar32(dec.imm.v, 12);
+      printf("lui  imm=%i\t rd=r%u\n", v, dec.reg_dest.v);
+    } break;
+    case OPCODE_LW: {
+      if (dec.funct3.v == FUNCT3_LW) { // LW
+        printf("lw   imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      }
+      else if (dec.funct3.v == FUNCT3_LBU) { // LBU
+        printf("lbu  imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      }
+      else {
+        printf("not implemented:%u\n", inst);
+      }
+    } break;
+    case OPCODE_SW: {
+      if (dec.funct3.v == FUNCT3_SW) { // SW
+        printf("sw   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
+      }
+      else if (dec.funct3.v == FUNCT3_SB) { // LBU
+        printf("sb   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
+      }
+      else {
+        printf("not implemented:%u\n", inst);
+      }
+    } break;
+    default: { // NOT IMPLEMENTED
+      printf("not implemented:%u\n", inst);
+    } break;
+  }
+}
+
+struct CPU_out {
+  reg_index_t reg_dest;
+  reg_size_t  reg_write_data;
+  addr_size_t pc_addr;
+  addr_size_t ram_addr;
+  reg_size_t  ram_write_data;
+};
+
+CPU_out cpu_eval(miniRV* cpu, Trigger clock, Trigger reset) {
+  CPU_out out = {0};
   inst_size_t inst = mem_read(cpu->rom, cpu->pc, ROM_SIZE);
   Dec_out dec_out = dec_eval(inst);
   RF_out rf_out = rf_read(cpu, dec_out.reg_src1, dec_out.reg_src2);
@@ -370,7 +436,7 @@ void cpu_eval(miniRV* cpu, Trigger clock, Trigger reset) {
     is_jump.v = 0;
   }
   else {
-    printf("WARNING: NOT IMPLEMENTED\n");
+    print_instruction(inst);
     ram_write_enable.v = 0;
     ram_addr.v = 0;
     ram_write_data.v = 0;
@@ -380,9 +446,17 @@ void cpu_eval(miniRV* cpu, Trigger clock, Trigger reset) {
     is_jump.v = 0;
   }
 
+
+  out.reg_dest = dec_out.reg_dest;
+  out.reg_write_data = reg_write_data;
+  out.pc_addr = cpu->pc;
+  out.ram_addr = ram_addr;
+  out.ram_write_data = ram_write_data;
+
   rf_write(cpu, clock, reset, dec_out.write_enable, dec_out.reg_dest, reg_write_data);
   mem_write(cpu->ram, clock, reset, ram_write_enable, ram_write_enable_bytes, ram_addr, ram_write_data, RAM_SIZE);
   pc_write(cpu, clock, reset, in_addr, is_jump);
+  return out;
 }
 
 void cpu_reset(miniRV* cpu) {
@@ -433,7 +507,7 @@ inst_size_t lbu(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
 }
 
 inst_size_t sw(uint32_t imm, uint32_t reg_src2, uint32_t reg_src1) {
-  uint32_t top_imm = ((-1 << 5) & imm) >> 5;
+  uint32_t top_imm = (imm << 5) >> 5;
   uint32_t bot_imm = 0b11111 & imm;
   uint32_t inst_u32 = (top_imm << 25) | (reg_src2 << 20) | (reg_src1 << 15) | (FUNCT3_SW << 12) | (bot_imm << 7) | OPCODE_SW;
   inst_size_t result = { inst_u32 };
@@ -447,3 +521,4 @@ inst_size_t sb(uint32_t imm, uint32_t reg_src2, uint32_t reg_src1) {
   inst_size_t result = { inst_u32 };
   return result;
 }
+

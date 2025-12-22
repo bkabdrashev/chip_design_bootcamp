@@ -1,3 +1,4 @@
+#include <raylib.h>
 #include <stdlib.h>
 #include <random>
 #include <bitset>
@@ -9,16 +10,66 @@
 #include "VminiRV__Dpi.h"
 #include "gm.cpp"
 
-int32_t sar32(uint32_t u, unsigned shift) {
-  assert(shift < 32);
+#include <fstream>
+#include <vector>
+#include <stdexcept>
+#include <algorithm>
 
-  if (shift == 0) return (u & 0x80000000u) ? -int32_t((~u) + 1u) : int32_t(u);
+static inline std::string trim(std::string s) {
+  auto notSpace = [](unsigned char c){ return !std::isspace(c); };
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), notSpace));
+  s.erase(std::find_if(s.rbegin(), s.rend(), notSpace).base(), s.end());
+  return s;
+}
 
-  uint32_t shifted = u >> shift;      
-  if (u & 0x80000000u) {
-    shifted |= (~0u << (32 - shift)); 
+std::vector<std::uint8_t> read_hex_bytes_one_per_line(const std::string& path) {
+  std::ifstream in(path);
+  if (!in) throw std::runtime_error("Cannot open file: " + path);
+
+  std::vector<std::uint8_t> bytes;
+  std::string line;
+  std::size_t lineNo = 0;
+
+  while (std::getline(in, line)) {
+    ++lineNo;
+
+    // Strip inline comments starting with '#' or ';' or '//'
+    auto cut = line.find('#');
+    if (cut != std::string::npos) line.erase(cut);
+    cut = line.find(';');
+    if (cut != std::string::npos) line.erase(cut);
+    cut = line.find("//");
+    if (cut != std::string::npos) line.erase(cut);
+
+    line = trim(line);
+    if (line.empty()) continue;
+
+    // Optional 0x / 0X prefix
+    if (line.size() >= 2 && line[0] == '0' && (line[1] == 'x' || line[1] == 'X')) {
+      line = line.substr(2);
+      line = trim(line);
+    }
+
+    // Expect 1 or 2 hex digits for a byte (e.g., "A" or "0A" or "ff")
+    if (line.size() == 1) line = "0" + line;
+    if (line.size() != 2)
+      throw std::runtime_error("Invalid byte on line " + std::to_string(lineNo) + ": '" + line + "'");
+
+    // Parse as hex
+    std::size_t idx = 0;
+    unsigned long val = 0;
+    try {
+      val = std::stoul(line, &idx, 16);
+    } catch (...) {
+      throw std::runtime_error("Non-hex data on line " + std::to_string(lineNo) + ": '" + line + "'");
+    }
+    if (idx != line.size() || val > 0xFF)
+      throw std::runtime_error("Out-of-range byte on line " + std::to_string(lineNo) + ": '" + line + "'");
+
+    bytes.push_back(static_cast<std::uint8_t>(val));
   }
-  return static_cast<int32_t>(shifted);
+
+  return bytes;
 }
 
 void clock_tick(Trigger* clock) {
@@ -36,7 +87,7 @@ void reset_dut(VminiRV* dut) {
 
 void reset_gm(miniRV* gm, Trigger* clock, Trigger* reset) {
   cpu_reset(gm);
-  mem_reset(gm->ram, RAM_SIZE);
+  // mem_reset(gm->ram, RAM_SIZE);
   clock->prev = 0;
   clock->curr = 0;
   reset->prev = 0;
@@ -136,77 +187,27 @@ inst_size_t random_instruction(std::mt19937* gen) {
   return inst;
 }
 
-void print_instruction(inst_size_t inst) {
-  Dec_out dec = dec_eval(inst);
-  switch (dec.opcode.v) {
-    case OPCODE_ADDI: {
-      printf("addi imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
-    } break;
-    case OPCODE_JALR: {
-      printf("jalr imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
-    } break;
-    case OPCODE_ADD: { // ADD
-      printf("add  rs2=r%u\t rs1=r%u\t rd=r%u\n", dec.reg_src2.v, dec.reg_src1.v, dec.reg_dest.v);
-    } break;
-    case OPCODE_LUI: { // LUI
-      uint32_t v = sar32(dec.imm.v, 12);
-      printf("lui  imm=%i\t rd=r%u\n", v, dec.reg_dest.v);
-    } break;
-    case OPCODE_LW: {
-      if (dec.funct3.v == FUNCT3_LW) { // LW
-        printf("lw   imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
-      }
-      else if (dec.funct3.v == FUNCT3_LBU) { // LBU
-        printf("lbu  imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
-      }
-      else {
-        printf("not implemented:%u\n", inst);
-      }
-    } break;
-    case OPCODE_SW: {
-      if (dec.funct3.v == FUNCT3_SW) { // SW
-        printf("sw   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
-      }
-      else if (dec.funct3.v == FUNCT3_SB) { // LBU
-        printf("sb   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
-      }
-      else {
-        printf("not implemented:%u\n", inst);
-      }
-    } break;
-    default: { // NOT IMPLEMENTED
-      printf("not implemented:%u\n", inst);
-    } break;
-  }
-}
-
-int main(int argc, char** argv, char** env) {
+void random_difftest() {
   VminiRV *dut = new VminiRV;
   miniRV *gm = new miniRV;
+  gm->ram = new byte[65536];
+  gm->rom = new byte[65536];
   uint32_t n_inst = 200;
   inst_size_t* insts = new inst_size_t[n_inst];
   bool test_not_failed = true;
   uint64_t tests_passed = 0;
-  uint64_t max_sim_time = 500;
+  uint64_t max_sim_time = 400;
   uint64_t max_tests = 1000;
-  // uint64_t seed = hash_uint64_t(std::time(0));
-  uint64_t seed = 11912696108987925668;
+  uint64_t seed = hash_uint64_t(std::time(0));
+  // uint64_t seed = 11912696108987925668;
   do {
-    printf("======== SEED:%lu =========\n", seed);
+    printf("======== SEED:%lu ===== %u/%u =========\n", seed, tests_passed, max_tests);
     std::random_device rd;
     std::mt19937 gen(rd());
     gen.seed(seed);
     for (uint32_t i = 0; i < n_inst; i++) {
       inst_size_t inst = random_instruction(&gen);
       insts[i] = inst;
-      print_instruction(inst);
-    }
-    // insts[0] = addi(-520, 6, 1);
-    // insts[1] = sw(1000, 1, 0);
-    // insts[2] = lw(1000, 0, 2);
-    // n_inst = 3;
-    for (uint32_t i = 0; i < n_inst; i++) {
-      print_instruction(insts[i]);
     }
 
     Trigger clock = {};
@@ -230,7 +231,7 @@ int main(int argc, char** argv, char** env) {
     dut->rom_wen = 0;
     reset_dut(dut);
     reset_gm(gm, &clock, &reset);
-    for (uint64_t t = 0; t < max_sim_time && gm->pc.v < n_inst * 4; t++) {
+    for (uint64_t t = 0; t < max_sim_time && gm->pc.v <= n_inst; t++) {
       dut->eval();
       inst_size_t inst = mem_read(gm->rom, gm->pc, ROM_SIZE);
       cpu_eval(gm, clock, reset);
@@ -238,7 +239,11 @@ int main(int argc, char** argv, char** env) {
       dut->clk ^= 1;
       clock_tick(&clock);
       if(!test_not_failed) {
-        printf("[%u] %u inst: ", t, inst.v);
+        for (uint32_t i = 0; i < n_inst; i++) {
+          print_instruction(insts[i]);
+        }
+
+        printf("[%u] inst: ", t);
         print_instruction(inst);
         break;
       }
@@ -253,11 +258,105 @@ int main(int argc, char** argv, char** env) {
     }
   } while (test_not_failed && tests_passed < max_tests);
 
+
   std::cout << "Tests results:\n" << tests_passed << " / " << max_tests << " have passed\n";
 
   delete insts;
   delete dut;
   delete gm;
+}
+
+void draw_image_raylib(char* image) {
+  const int FB_W = 256;
+  const int FB_H = 256;
+
+  auto *fb = reinterpret_cast<void*>(image);
+
+  InitWindow(FB_W, FB_H, "Framebuffer viewer");
+  SetTargetFPS(60);
+
+  // Create a texture in the format you expect your buffer to be in.
+  // Most common: RGBA8888 (bytes: R, G, B, A)
+  Image img = {};
+  img.data = fb; 
+  img.width = FB_W;
+  img.height = FB_H;
+  img.mipmaps = 1;
+  img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+
+  while (!WindowShouldClose()) {
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    // Scale it up to the window
+    for (int y = 0; y < FB_H; y++) {
+      for (int x = 0; x < FB_W; x++) {
+        uint32_t p = ((uint32_t*)fb)[y*256 + x];
+        unsigned char blue = p & 0xff;
+        unsigned char green = (p >> 8) & 0xff;
+        unsigned char red = (p >> 16) & 0xff;
+        Color c = { red, green, blue, 255};
+        DrawPixel(x, y, c);
+      }
+    }
+    EndDrawing();
+  }
+
+  CloseWindow();
+}
+
+void vga_image_test() {
+  VminiRV* dut = new VminiRV;
+  const uint64_t base = 0x20000000;
+  const uint64_t nbytes = 256*256*4;
+  char* image = new char[nbytes];
+  reset_dut(dut);
+  for (uint64_t t = 0; t < 2000000; t++) {
+    dut->eval();
+    dut->clk ^= 1;
+  }
+
+  svScope vga_scope = svGetScopeFromName("TOP.miniRV.vga");
+  if (!vga_scope) {
+    std::cerr << "ERROR: svGetScopeFromName(\"TOP.vga\") returned NULL\n";
+    std::exit(1);
+  }
+  svSetScope(vga_scope);
+  for (uint64_t i = 0; i < nbytes; i++) {
+    image[i] = mem_get(i);
+  }
+  draw_image_raylib(image);
+}
+
+void vga_image_gm() {
+  miniRV* gm = new miniRV;
+  const uint64_t base = 0x20000000;
+  const uint64_t nbytes = 256*256*4;
+  char* image = new char[nbytes];
+  Trigger clock = {};
+  Trigger reset = {};
+  gm->ram = new byte[0x30000000];
+  gm->rom = new byte[0x30000000];
+  auto hex_bytes = read_hex_bytes_one_per_line("vga2.hex");
+  for (uint64_t i = 0; i < hex_bytes.size(); i++) {
+    gm->rom[i].v = hex_bytes[i];
+    gm->ram[i].v = hex_bytes[i];
+  }
+  reset_gm(gm, &clock, &reset);
+  for (uint64_t t = 0; t < 2000000; t++) {
+    cpu_eval(gm, clock, reset);
+    clock_tick(&clock);
+  }
+  for (uint64_t i = 0; i < nbytes; i++) {
+    image[i] = gm->ram[i+base].v;
+  }
+  draw_image_raylib(image);
+}
+
+int main(int argc, char** argv, char** env) {
+  // random_difftest();
+  vga_image_test();
+  // vga_image_gm();
   exit(EXIT_SUCCESS);
 }
 

@@ -35,4 +35,4 @@ The goal of this Bootcamp is to design RISC-V chip.
 - [x] RAM
 - [x] ROM
 - [x] Golden Model for miniRV
-- [ ] Randomized difftesting
+- [x] Randomized difftesting

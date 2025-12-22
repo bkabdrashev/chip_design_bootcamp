@@ -35,6 +35,12 @@ module miniRV (
   logic [31:0] ram_rdata;
   logic [3:0]  ram_wstrb;
 
+  logic        vga_wen;
+  logic [31:0] vga_addr;
+  logic [31:0] vga_wdata;
+  logic [31:0] vga_rdata;
+  logic [3:0]  vga_wstrb;
+
   pc u_pc(
     .clk(clk),
     .reset(reset),
@@ -43,8 +49,9 @@ module miniRV (
     .out_addr(pc)
   );
 
-  ram64k ram(.clk(clk), .reset(reset), .wen(ram_wen), .wdata(ram_wdata), .wstrb(ram_wstrb), .addr(ram_addr), .read_data(ram_rdata));
-  ram64k rom(.clk(clk), .reset(rom_reset), .wen(rom_wen), .wdata(rom_wdata), .wstrb(4'b1111), .addr(rom_addr_or_pc), .read_data(inst));
+  ram64k #(.HEXFILE("vga2.hex")) ram(.clk(clk), .reset(reset),     .wen(ram_wen), .wdata(ram_wdata), .wstrb(ram_wstrb), .addr(ram_addr),       .read_data(ram_rdata));
+  ram64k #(.HEXFILE("vga2.hex")) rom(.clk(clk), .reset(rom_reset), .wen(rom_wen), .wdata(rom_wdata), .wstrb(4'b1111),   .addr(rom_addr_or_pc), .read_data(inst));
+  ram64k         #(.HEXFILE("")) vga(.clk(clk), .reset(reset),     .wen(vga_wen), .wdata(vga_wdata), .wstrb(vga_wstrb), .addr(vga_addr),       .read_data(vga_rdata));
 
   dec u_dec(
     .inst(inst),
@@ -84,13 +91,21 @@ module miniRV (
   always_comb begin
     if (rom_wen) begin
       rom_addr_or_pc = rom_addr;
-      wdata = 0;
-      pc_addr = 0;
-      is_pc_jump = 0;
+
       ram_wen = 0;
       ram_addr = 0;
       ram_wdata = 0;
       ram_wstrb = 4'b0000;
+
+      vga_wen = 0;
+      vga_addr = 0;
+      vga_wdata = 0;
+      vga_wstrb = 0;
+
+      wdata = 0;
+      pc_addr = 0;
+      is_pc_jump = 0;
+
     end else begin
       rom_addr_or_pc = pc;
       if (dec_opcode == 7'b0010011) begin
@@ -99,6 +114,12 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 4'b0000;
+
+        vga_wen = 0;
+        vga_addr = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -108,6 +129,12 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 0;
+
+        vga_wen = 0;
+        vga_addr = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
         wdata = pc+4;
         pc_addr = (rdata1 + dec_imm) & ~3;
         is_pc_jump = 1;
@@ -117,6 +144,12 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 4'b0000;
+
+        vga_wen = 0;
+        vga_addr = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -126,42 +159,110 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 4'b0000;
+
+        vga_wen = 0;
+        vga_addr = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
         wdata = dec_imm;
         pc_addr = 0;
         is_pc_jump = 0;
       end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b010) begin
         // LW
         ram_wen = 0;
-        ram_addr = rdata1 + dec_imm;
         ram_wdata = 0;
         ram_wstrb = 4'b0000;
-        wdata = ram_rdata;
+
+        vga_wen = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
+        if (rdata1 + dec_imm < 'h2000_0000) begin
+          ram_addr = rdata1 + dec_imm;
+          vga_addr = 0;
+          wdata = ram_rdata;
+        end else begin
+          ram_addr = 0;
+          vga_addr = rdata1 + dec_imm - 'h2000_0000;
+          wdata = vga_rdata;
+        end
+
         pc_addr = 0;
         is_pc_jump = 0;
       end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b100) begin
         // LBU
         ram_wen = 0;
-        ram_addr = rdata1 + dec_imm;
         ram_wdata = 0;
         ram_wstrb = 0;
-        wdata = ram_rdata & 32'hff;
+
+        vga_wen = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
+        if (rdata1 + dec_imm < 'h2000_0000) begin
+          ram_addr = rdata1 + dec_imm;
+          vga_addr = 0;
+          wdata = ram_rdata & 32'hff;
+        end else begin
+          ram_addr = 0;
+          vga_addr = rdata1 + dec_imm - 'h2000_0000;
+          wdata = vga_rdata & 32'hff;
+        end
+
         pc_addr = 0;
         is_pc_jump = 0;
       end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b010) begin
         // SW
-        ram_wen = 1;
-        ram_addr = rdata1 + dec_imm;
-        ram_wdata = rdata2;
-        ram_wstrb = 4'b1111;
+        if (rdata1 + dec_imm < 'h2000_0000) begin
+          ram_wen = 1;
+          ram_addr = rdata1 + dec_imm;
+          ram_wdata = rdata2;
+          ram_wstrb = 4'b1111;
+
+          vga_wen = 0;
+          vga_addr = 0;
+          vga_wdata = 0;
+          vga_wstrb = 0;
+        end else begin
+          ram_wen = 0;
+          ram_addr = 0;
+          ram_wdata = 0;
+          ram_wstrb = 0;
+
+          vga_wen = 1;
+          vga_addr = rdata1 + dec_imm - 'h2000_0000;
+          vga_wdata = rdata2;
+          vga_wstrb = 4'b1111;
+        end
+
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
       end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b000) begin
         // SB
-        ram_wen = 1;
-        ram_addr = rdata1 + dec_imm;
-        ram_wdata = rdata2 & 32'hff;
-        ram_wstrb = 4'b0001;
+        if (rdata1 + dec_imm < 'h2000_0000) begin
+          ram_wen = 1;
+          ram_addr = rdata1 + dec_imm;
+          ram_wdata = rdata2 & 32'hff;
+          ram_wstrb = 4'b0001;
+
+          vga_wen = 0;
+          vga_addr = 0;
+          vga_wdata = 0;
+          vga_wstrb = 0;
+        end else begin
+          ram_wen = 0;
+          ram_addr = 0;
+          ram_wdata = 0;
+          ram_wstrb = 0;
+
+          vga_wen = 1;
+          vga_addr = rdata1 + dec_imm - 'h2000_0000;
+          vga_wdata = rdata2 & 32'hff;
+          vga_wstrb = 4'b0001;
+        end
+
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
@@ -171,6 +272,12 @@ module miniRV (
         ram_addr = 0;
         ram_wdata = 0;
         ram_wstrb = 4'b0000;
+
+        vga_wen = 0;
+        vga_addr = 0;
+        vga_wdata = 0;
+        vga_wstrb = 0;
+
         wdata = 0;
         pc_addr = 0;
         wdata = 0;
