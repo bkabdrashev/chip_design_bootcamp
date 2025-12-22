@@ -1,0 +1,6 @@
+#define MEM_START (0x00000000)
+#define MEM_END  (1024 * 1024)
+#define MEM_SIZE (MEM_END - MEM_START)
+#define VGA_START (0x20000000)
+#define VGA_END  (0x20040000)
+#define VGA_SIZE (VGA_END - VGA_START)

@@ -32,8 +32,8 @@ module rf (
     trunc_rd = rd[3:0];
     trunc_rs1 = rs1[3:0];
     trunc_rs2 = rs2[3:0];
-    rdata1 = (rs1 == 0 && rs1 >= 16) ? 32'h0 : regs[trunc_rs1];
-    rdata2 = (rs2 == 0 && rs2 >= 16) ? 32'h0 : regs[trunc_rs2];
+    rdata1 = (rs1 == 0 || rs1 >= 16) ? 32'h0 : regs[trunc_rs1];
+    rdata2 = (rs2 == 0 || rs2 >= 16) ? 32'h0 : regs[trunc_rs2];
     for (j = 0; j < 16; j++) begin
       regs_out[j] = regs[j];
     end

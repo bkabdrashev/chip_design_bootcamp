@@ -183,8 +183,8 @@ bool compare(VminiRV* dut, miniRV* gm, uint8_t* mem, uint8_t* vga, uint64_t sim_
     char name[] = {'R', digit1, digit0, '\0'};
     result &= compare_reg(sim_time, name, dut->regs_out[i], gm->regs[i].v);
   }
-  // result &= memcmp(gm->mem, mem, MEM_SIZE) == 0;
-  // result &= memcmp(gm->vga, vga, VGA_SIZE) == 0;
+  result &= memcmp(gm->mem, mem, MEM_SIZE) == 0;
+  result &= memcmp(gm->vga, vga, VGA_SIZE) == 0;
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
       uint32_t dut_v = dut_ram_read(i);
@@ -310,41 +310,41 @@ void random_difftest() {
   miniRV *gm = new miniRV;
   VminiRV *dut = new VminiRV;
 
-  // Verilated::traceEverOn(true);
-  // VerilatedVcdC *m_trace = new VerilatedVcdC;
-  // dut->trace(m_trace, 5);
+  Verilated::traceEverOn(true);
+  VerilatedVcdC *m_trace = new VerilatedVcdC;
+  dut->trace(m_trace, 5);
 
-  /*
   GmVcdTrace gm_trace{gm};
-  m_trace->spTrace()->addCallback(
-      &GmVcdTrace::init_cb,
-      &GmVcdTrace::full_cb,
-      &GmVcdTrace::chg_cb,
-      &gm_trace);
-  */
+  m_trace->spTrace()->addInitCb(&GmVcdTrace::init_cb, &gm_trace);
+  m_trace->spTrace()->addFullCb(&GmVcdTrace::full_cb, 0, &gm_trace);
+  m_trace->spTrace()->addChgCb (&GmVcdTrace::chg_cb,  0, &gm_trace);
+  m_trace->open("waveform.vcd");
 
-  // m_trace->open("waveform.vcd");
+  // 0b111111110001 11001 000 01101 0010011
+  // addi
 
   uint8_t* memory = dut_ram_ptr();
   uint8_t* vga = dut_vga_ptr();
 
-  uint32_t n_insts = 200;
+  uint32_t n_insts = 1000;
   inst_size_t* insts = new inst_size_t[n_insts];
   bool test_not_failed = true;
   uint64_t tests_passed = 0;
-  uint64_t max_sim_time = 400;
-  uint64_t max_tests = 200;
+  uint64_t max_sim_time = 2000;
+  uint64_t max_tests = 100000;
   // uint64_t seed = hash_uint64_t(std::time(0));
   // uint64_t seed = 3263282379841580567lu;
   // uint64_t seed = 10714955119269546755lu;
-  uint64_t seed = 12610096651643082169lu;
+  // uint64_t seed = 12610096651643082169lu;
+  uint64_t seed = 1451270821828317064lu;
   do {
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, tests_passed, max_tests);
     std::random_device rd;
     std::mt19937 gen(rd());
     gen.seed(seed);
     for (uint32_t i = 0; i < n_insts; i++) {
-      inst_size_t inst = random_instruction_mem_load_or_store(&gen);
+      // inst_size_t inst = random_instruction_mem_load_or_store(&gen);
+      inst_size_t inst = random_instruction(&gen);
       insts[i] = inst;
     }
 
@@ -375,7 +375,13 @@ void random_difftest() {
       test_not_failed &= compare(dut, gm, memory, vga, t);
 
       if (!test_not_failed) {
-        printf("[%u] %u inst: ", t, inst.v);
+        for (uint32_t i = 0; i < n_insts; i++) {
+          // inst_size_t inst = random_instruction_mem_load_or_store(&gen);
+          printf("pc=%x: ", 4*i);
+          print_instruction(insts[i]);
+        }
+
+        printf("[%u] pc=%x inst: ", t, gm->pc.v);
         print_instruction(inst);
         break;
       }
@@ -393,7 +399,7 @@ void random_difftest() {
       tests_passed++;
     }
   } while (test_not_failed && tests_passed < max_tests);
-  // m_trace->close();
+  m_trace->close();
 
 
   std::cout << "Tests results:\n" << tests_passed << " / " << max_tests << " have passed\n";

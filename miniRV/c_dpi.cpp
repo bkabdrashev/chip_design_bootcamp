@@ -2,12 +2,7 @@
 #include "memory.h"
 #include "stdio.h"
 
-#define MEM_START (0x00000000)
-#define MEM_END  (128 * 1024 * 1024)
-#define MEM_SIZE (MEM_END - MEM_START)
-#define VGA_START (0x20000000)
-#define VGA_END  (0x20040000)
-#define VGA_SIZE (VGA_END - VGA_START)
+#include "mem_map.h"
 
 static uint8_t memory[MEM_SIZE];
 static uint8_t vga[VGA_SIZE];

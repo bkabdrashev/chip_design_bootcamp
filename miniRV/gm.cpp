@@ -11,13 +11,7 @@
 #define BYTE 8u
 #define INST_BITS 32u
 
-#define MEM_START (0x00000000)
-#define MEM_END  (128 * 1024 * 1024)
-#define MEM_SIZE (MEM_END - MEM_START)
-#define VGA_START (0x20000000)
-#define VGA_END  (0x20040000)
-#define VGA_SIZE (VGA_END - VGA_START)
-
+#include "mem_map.h"
 #define N_REGS 16u
 
 #define OPCODE_ADDI  (0b0010011)
@@ -200,16 +194,16 @@ void gm_mem_write(miniRV* cpu, bit write_enable, bit4 write_enable_bytes, addr_s
       }
       else if (addr.v >= MEM_START && addr.v < MEM_END) {
         if (write_enable_bytes.bits[0].v) {
-          cpu->mem[addr.v + 0].v = (write_data.v & (0xff << 0)) >> 0;
+          cpu->mem[addr.v + 0].v = (write_data.v >>  0) & 0xff;
         }
         if (write_enable_bytes.bits[1].v) {
-          cpu->mem[addr.v + 1].v = (write_data.v & (0xff << 8)) >> 8;
+          cpu->mem[addr.v + 1].v = (write_data.v >>  8) & 0xff;
         }
         if (write_enable_bytes.bits[2].v) {
-          cpu->mem[addr.v + 2].v = (write_data.v & (0xff << 16)) >> 16;
+          cpu->mem[addr.v + 2].v = (write_data.v >> 16) & 0xff;
         }
         if (write_enable_bytes.bits[3].v) {
-          cpu->mem[addr.v + 3].v = (write_data.v & (0xff << 24)) >> 24;
+          cpu->mem[addr.v + 3].v = (write_data.v >> 24) & 0xff;
         }
       }
       else {
@@ -497,47 +491,73 @@ void cpu_reset_regs(miniRV* cpu) {
     cpu->regs[i].v = 0;
   }
 }
-/*
+
 struct GmVcdTrace {
-  miniRV* gm;
+  miniRV* gm = nullptr;
+  uint32_t base = 0;
 
-  static void init_cb(VerilatedVcd* vcdp, void* userthis, vluint32_t code) {
-    auto* self = static_cast<GmVcdTrace*>(userthis);
-    (void)self;
+  static constexpr int kRegs = 32;
 
-    const vluint32_t c = code;
+  explicit GmVcdTrace(miniRV* g) : gm(g) {}
 
-    vcdp->module("gm");
-    vcdp->declBus(c + 0, "pc", 0, 31, 0);
+  // ---- declBus compatibility: Verilator versions differ in declBus signature ----
+  template <typename VcdT>
+  static auto declBusCompat(VcdT* vcdp, uint32_t code, const char* name, int msb, int lsb, int)
+      -> decltype(vcdp->declBus(code, name, false, -1, msb, lsb), void()) {
+    // Newer-ish simple declBus(code,name,array,arraynum,msb,lsb)
+    vcdp->declBus(code, name, false, -1, msb, lsb);
+  }
 
-    for (int i = 0; i < 32; i++) {
-      char name[8];
-      std::snprintf(name, sizeof(name), "x%02d", i);
-      vcdp->declBus(c + 1 + i, name, 0, 31, 0);
+  template <typename VcdT>
+  static auto declBusCompat(VcdT* vcdp, uint32_t code, const char* name, int msb, int lsb, long) -> decltype(vcdp->declBus(code, 0, name, -1,
+                                static_cast<VerilatedTraceSigDirection>(0),
+                                static_cast<VerilatedTraceSigKind>(0),
+                                static_cast<VerilatedTraceSigType>(0),
+                                false, 0, msb, lsb), void()) {
+    // Newer generic declBus(code,fidx,name,dtypenum,dir,kind,type,isArray,arraynum,msb,lsb)
+    vcdp->declBus(code, 0, name, -1,
+                  static_cast<VerilatedTraceSigDirection>(0),
+                  static_cast<VerilatedTraceSigKind>(0),
+                  static_cast<VerilatedTraceSigType>(0),
+                  false, 0, msb, lsb);
+  }
+
+  static void init_cb(void* userp, VerilatedVcd* vcdp, uint32_t code) {
+    auto* self = static_cast<GmVcdTrace*>(userp);
+    self->base = code;
+
+    // Use hierarchical names directly (no module() needed)
+    declBusCompat(vcdp, code + 0, "gm.pc", 31, 0, 0);
+
+    for (int i = 0; i < kRegs; i++) {
+      char n[32];
+      std::snprintf(n, sizeof(n), "gm.x%d", i);
+      declBusCompat(vcdp, code + 1 + i, n, 31, 0, 0);
     }
   }
 
-  static void full_cb(VerilatedVcd* vcdp, void* userthis, vluint32_t code) {
-    auto* self = static_cast<GmVcdTrace*>(userthis);
-    const vluint32_t c = code;
+  static void full_cb(void* userp, VerilatedVcd::Buffer* bufp) {
+    auto* self = static_cast<GmVcdTrace*>(userp);
+    const uint32_t b = self->base;
 
-    vcdp->fullBus(c + 0, self->gm->pc.v, 32);
-    for (int i = 0; i < 32; i++) {
-      vcdp->fullBus(c + 1 + i, self->gm->regs[i].v, 32);  // <-- adjust to your reg storage
+    // NOTE: adjust these field accesses to match your miniRV layout
+    bufp->fullIData(bufp->oldp(b + 0), self->gm->pc.v, N_REGS);
+    for (int i = 0; i < kRegs; i++) {
+      bufp->fullIData(bufp->oldp(b + 1 + i), self->gm->regs[i].v, N_REGS);
     }
   }
 
-  static void chg_cb(VerilatedVcd* vcdp, void* userthis, vluint32_t code) {
-    auto* self = static_cast<GmVcdTrace*>(userthis);
-    const vluint32_t c = code;
+  static void chg_cb(void* userp, VerilatedVcd::Buffer* bufp) {
+    auto* self = static_cast<GmVcdTrace*>(userp);
+    const uint32_t b = self->base;
 
-    vcdp->chgBus(c + 0, self->gm->pc.v, 32);
-    for (int i = 0; i < 32; i++) {
-      vcdp->chgBus(c + 1 + i, self->gm->regs[i].v, 32);  // <-- adjust
+    // Incremental dump when changed
+    bufp->chgIData(bufp->oldp(b + 0), self->gm->pc.v, 32);
+    for (int i = 0; i < kRegs; i++) {
+      bufp->chgIData(bufp->oldp(b + 1 + i), self->gm->regs[i].v, 32);
     }
   }
 };
-  */
 
 inst_size_t addi(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
   uint32_t inst_u32 = (imm << 20) | (reg_src1 << 15) | (FUNCT3_ADDI << 12) | (reg_dest << 7) | OPCODE_ADDI;
