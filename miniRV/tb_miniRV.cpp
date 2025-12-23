@@ -201,6 +201,7 @@ bool compare_mem(uint64_t sim_time, uint32_t address, uint32_t dut_v, uint32_t g
 
 bool compare(VminiRV* dut, miniRV* gm, uint8_t* mem, uint8_t* vga, uint64_t sim_time) {
   bool result = true;
+  // result &= compare_reg(sim_time, "EBREAK", dut->ebreak, gm->ebreak.v);
   result &= compare_reg(sim_time, "PC", dut->pc, gm->pc.v);
   for (uint32_t i = 0; i < N_REGS; i++) {
     char digit0 = i%10 + '0';
@@ -370,6 +371,12 @@ void delete_tester(Tester_gm_dut tester) {
   delete tester.gm;
 }
 
+bool is_valid_pc_address(uint32_t pc, uint32_t n_insts) {
+  uint32_t min_address = MEM_START;
+  uint32_t max_address = 4*n_insts + MEM_START;
+  return min_address <= pc && pc <= max_address;
+}
+
 bool test_instructions(Tester_gm_dut tester, inst_size_t* insts, uint32_t n_insts, uint64_t max_sim_time) {
   bool is_test_success = true;
 
@@ -377,7 +384,6 @@ bool test_instructions(Tester_gm_dut tester, inst_size_t* insts, uint32_t n_inst
   miniRV* gm  = tester.gm;
   uint8_t* dpi_c_memory  = tester.dpi_c_memory;
   uint8_t* dpi_c_vga  = tester.dpi_c_vga;
-  // VerilatedVcdC* m_trace = tester.m_trace;
 
   dut->clk = 0;
   dut->rom_wen = 1;
@@ -399,7 +405,7 @@ bool test_instructions(Tester_gm_dut tester, inst_size_t* insts, uint32_t n_inst
   reset_dut_regs(dut);
   reset_gm_regs(gm);
   dut->clk = 0;
-  for (uint64_t t = 0; t < max_sim_time; t++) {
+  for (uint64_t t = 0; t < max_sim_time && is_valid_pc_address(gm->pc.v, n_insts) && is_valid_pc_address(dut->pc, n_insts); t++) {
     dut->eval();
     inst_size_t inst = gm_mem_read(gm, gm->pc);
     CPU_out out = cpu_eval(gm);
@@ -407,7 +413,7 @@ bool test_instructions(Tester_gm_dut tester, inst_size_t* insts, uint32_t n_inst
       printf("gm and dut ebreak\n");
       break;
     }
-    tester.m_trace->dump(t);
+    // tester.m_trace->dump(t);
 
     is_test_success &= compare(dut, gm, dpi_c_memory, dpi_c_vga, t);
 
@@ -435,12 +441,12 @@ bool test_instructions(Tester_gm_dut tester, inst_size_t* insts, uint32_t n_inst
 
 void random_difftest() {
   Tester_gm_dut tester = new_tester();
-  uint32_t n_insts = 4;
+  uint32_t n_insts = 500;
   inst_size_t* insts = new inst_size_t[n_insts];
   bool is_tests_success = true;
   uint64_t tests_passed = 0;
   uint64_t max_sim_time = 2000;
-  uint64_t max_tests = 2;
+  uint64_t max_tests = 200;
   // uint64_t seed = hash_uint64_t(std::time(0));
   // uint64_t seed = 3263282379841580567lu;
   // uint64_t seed = 10714955119269546755lu;
@@ -562,8 +568,8 @@ void dummy_test() {
 }
 
 int main(int argc, char** argv, char** env) {
-  // random_difftest();
-  dummy_test();
+  random_difftest();
+  // dummy_test();
   // vga_image_test();
   // vga_image_gm();
   exit(EXIT_SUCCESS);
