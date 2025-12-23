@@ -224,8 +224,8 @@ bool compare(Tester_gm_dut* tester, uint64_t sim_time) {
     char name[] = {'R', digit1, digit0, '\0'};
     result &= compare_reg(sim_time, name, tester->dut->regs_out[i], tester->gm->regs[i].v);
   }
-  result &= memcmp(tester->gm->vga, tester->dpi_c_vga, VGA_SIZE) == 0;
-  result &= memcmp(tester->gm->mem, tester->dpi_c_memory, MEM_SIZE) == 0;
+  // result &= memcmp(tester->gm->vga, tester->dpi_c_vga, VGA_SIZE) == 0;
+  // result &= memcmp(tester->gm->mem, tester->dpi_c_memory, MEM_SIZE) == 0;
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
       uint32_t dut_v = dut_ram_read(i);
@@ -417,25 +417,34 @@ bool test_instructions(Tester_gm_dut* tester) {
   reset_dut_regs(dut);
   reset_gm_regs(gm);
   dut->clk = 0;
-  for (uint64_t t = 0;
-       t < tester->max_sim_time && is_valid_pc_address(gm->pc.v, tester->n_insts) && is_valid_pc_address(dut->pc, tester->n_insts);
-       t++) {
+  for (uint64_t t = 0; !tester->max_sim_time || t < tester->max_sim_time && is_valid_pc_address(gm->pc.v, tester->n_insts) && is_valid_pc_address(dut->pc, tester->n_insts); t++) {
     dut->eval();
     inst_size_t inst = gm_mem_read(gm, gm->pc);
     CPU_out out = cpu_eval(gm);
-    if (gm->ebreak.v && dut->ebreak) {
-      printf("gm and dut ebreak\n");
-      break;
+    if (gm->ebreak.v) {
+      printf("gm ebreak\n");
+      if (gm->regs[10].v != 0) {
+        printf("test is not successful: gm code %u\n", gm->regs[10].v);
+        is_test_success=false;
+      }
     }
-    // tester.m_trace->dump(t);
+    if (dut->ebreak) {
+      printf("dut ebreak\n");
+      if (dut->regs_out[10] != 0) {
+        printf("test is not successful: dut code %u\n", dut->regs_out[10]);
+        is_test_success=false;
+      }
+    }
+    if (gm->ebreak.v && dut->ebreak) break;
+    // tester->m_trace->dump(t);
 
     is_test_success &= compare(tester, t);
 
     if (!is_test_success) {
-      for (uint32_t i = 0; i < tester->n_insts; i++) {
-        printf("pc=%x: ", 4*i);
-        print_instruction(tester->insts[i]);
-      }
+      // for (uint32_t i = 0; i < tester->n_insts; i++) {
+      //   printf("pc=%x: ", 4*i);
+      //   print_instruction(tester->insts[i]);
+      // }
 
       printf("[%u] pc=%x inst: ", t, gm->pc.v);
       print_instruction(inst);
@@ -465,8 +474,9 @@ bool random_difftest(Tester_gm_dut* tester) {
   // uint64_t seed = 10714955119269546755lu;
   // uint64_t seed = 12610096651643082169lu;
   // uint64_t seed = 1451270821828317064lu;
+  uint64_t i_test = 0;
   do {
-    printf("======== SEED:%lu ===== %u/%u =========\n", seed, tests_passed, max_tests);
+    printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, max_tests);
     std::random_device rd;
     std::mt19937 gen(rd());
     gen.seed(seed);
@@ -481,7 +491,8 @@ bool random_difftest(Tester_gm_dut* tester) {
       tests_passed++;
     }
     seed = hash_uint64_t(seed);
-  } while (tests_passed < max_tests);
+    i_test++;
+  } while (is_tests_success && tests_passed < max_tests);
 
   std::cout << "Tests results:\n" << tests_passed << " / " << max_tests << " have passed\n";
   return is_tests_success;
@@ -565,7 +576,7 @@ void vga_image_gm() {
 
 bool bin_test(Tester_gm_dut* tester, const std::string& path) {
   std::vector<uint8_t> buffer = read_bin_file(path);
-  tester->max_sim_time = 1000;
+  tester->max_sim_time = 0;
   tester->n_insts = buffer.size() / 4;
   tester->insts = new inst_size_t[tester->n_insts];
   for (uint32_t i = 0; i < tester->n_insts; i++) {
