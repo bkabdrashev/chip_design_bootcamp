@@ -224,8 +224,8 @@ bool compare(Tester_gm_dut* tester, uint64_t sim_time) {
     char name[] = {'R', digit1, digit0, '\0'};
     result &= compare_reg(sim_time, name, tester->dut->regs_out[i], tester->gm->regs[i].v);
   }
-  result &= memcmp(tester->gm->mem, tester->dpi_c_memory, MEM_SIZE) == 0;
   result &= memcmp(tester->gm->vga, tester->dpi_c_vga, VGA_SIZE) == 0;
+  result &= memcmp(tester->gm->mem, tester->dpi_c_memory, MEM_SIZE) == 0;
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
       uint32_t dut_v = dut_ram_read(i);
@@ -365,11 +365,17 @@ Tester_gm_dut* new_tester() {
 
   result->dpi_c_memory = dut_ram_ptr();
   result->dpi_c_vga = dut_vga_ptr();
+
+  result->n_insts = 0;
+  result->insts = nullptr;
   return result;
 }
 
 void delete_tester(Tester_gm_dut* tester) {
   tester->m_trace->close();
+  if (tester->n_insts) {
+    delete [] tester->insts;
+  }
   delete tester->gm_trace;
   delete tester->m_trace;
   delete tester->dut;
@@ -475,7 +481,7 @@ bool random_difftest(Tester_gm_dut* tester) {
       tests_passed++;
     }
     seed = hash_uint64_t(seed);
-  } while (is_tests_success && tests_passed < max_tests);
+  } while (tests_passed < max_tests);
 
   std::cout << "Tests results:\n" << tests_passed << " / " << max_tests << " have passed\n";
   return is_tests_success;
@@ -560,7 +566,7 @@ void vga_image_gm() {
 bool bin_test(Tester_gm_dut* tester, const std::string& path) {
   std::vector<uint8_t> buffer = read_bin_file(path);
   tester->max_sim_time = 1000;
-  tester->n_insts = buffer.size();
+  tester->n_insts = buffer.size() / 4;
   tester->insts = new inst_size_t[tester->n_insts];
   for (uint32_t i = 0; i < tester->n_insts; i++) {
     uint32_t byte3 = buffer[4*i + 3] << 24;

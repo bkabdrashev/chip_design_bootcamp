@@ -158,13 +158,13 @@ void gm_mem_reset(miniRV* cpu) {
 
 inst_size_t gm_mem_read(miniRV* cpu, addr_size_t addr) {
   inst_size_t result = {0};
-  if (addr.v >= VGA_START && addr.v+3 < VGA_END) {
+  if (addr.v >= VGA_START && addr.v < VGA_END-3) {
     addr.v -= VGA_START;
     result.v = 
       cpu->vga[addr.v+3].v << 24 | cpu->vga[addr.v+2].v << 16 |
       cpu->vga[addr.v+1].v <<  8 | cpu->vga[addr.v+0].v <<  0 ;
   }
-  else if (addr.v >= MEM_START && addr.v+3 < MEM_END) {
+  else if (addr.v >= MEM_START && addr.v < MEM_END-3) {
     addr.v -= MEM_START;
     result.v = 
       cpu->mem[addr.v+3].v << 24 | cpu->mem[addr.v+2].v << 16 |
