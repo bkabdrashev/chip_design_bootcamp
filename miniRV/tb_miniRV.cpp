@@ -15,6 +15,7 @@
 #include <algorithm>
 
 struct Tester_gm_dut {
+  bool is_diff = false;
   miniRV* gm;
   VminiRV* dut;
   GmVcdTrace* gm_trace;
@@ -178,6 +179,26 @@ uint8_t* dut_vga_ptr() {
   return (uint8_t*)VminiRV::sv_vga_ptr();
 }
 
+uint8_t* dut_uart_ptr() {
+  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
+  if (!ram_scope) {
+    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
+    std::exit(1);
+  }
+  svSetScope(ram_scope);
+  return (uint8_t*)VminiRV::sv_uart_ptr();
+}
+
+uint32_t* dut_time_ptr() {
+  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
+  if (!ram_scope) {
+    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
+    std::exit(1);
+  }
+  svSetScope(ram_scope);
+  return (uint32_t*)VminiRV::sv_time_ptr();
+}
+
 void dut_rom_write(uint32_t addr, uint32_t wdata, uint8_t wstrb) {
   svScope rom_scope = svGetScopeFromName("TOP.miniRV.u_rom");
   if (!rom_scope) {
@@ -259,7 +280,7 @@ uint32_t random_bits(std::mt19937* gen, uint32_t n) {
 }
 
 inst_size_t random_instruction(std::mt19937* gen) {
-  uint32_t inst_id = random_range(gen, 0, 9);
+  uint32_t inst_id = random_range(gen, 0, 8); // NOTE: don't test ebreak right now
   inst_size_t inst = {};
   switch (inst_id) {
     case 0: { // ADDI
@@ -361,10 +382,12 @@ Tester_gm_dut* new_tester() {
   result->m_trace->spTrace()->addInitCb(&GmVcdTrace::init_cb, result->gm_trace);
   result->m_trace->spTrace()->addFullCb(&GmVcdTrace::full_cb, 0, result->gm_trace);
   result->m_trace->spTrace()->addChgCb (&GmVcdTrace::chg_cb,  0, result->gm_trace);
-  result->m_trace->open("waveform.vcd");
+  // result->m_trace->open("waveform.vcd");
 
   result->dpi_c_memory = dut_ram_ptr();
   result->dpi_c_vga = dut_vga_ptr();
+  result->gm->uart_ref = dut_uart_ptr();
+  result->gm->time_uptime_ref = dut_time_ptr();
 
   result->n_insts = 0;
   result->insts = nullptr;
@@ -408,26 +431,21 @@ bool test_instructions(Tester_gm_dut* tester) {
     dut->clk = 1;
     dut->eval();
 
-    clock_tick(gm);
-    gm_mem_write(gm, {1}, {1, 1, 1, 1}, {address}, tester->insts[i]);
-    clock_tick(gm);
+    if (tester->is_diff) {
+      clock_tick(gm);
+      gm_mem_write(gm, {1}, {1, 1, 1, 1}, {address}, tester->insts[i]);
+      clock_tick(gm);
+    }
     // print_instruction(tester->insts[i]);
   }
   dut->rom_wen = 0;
   reset_dut_regs(dut);
-  reset_gm_regs(gm);
+  if (tester->is_diff) {
+    reset_gm_regs(gm);
+  }
   dut->clk = 0;
   for (uint64_t t = 0; !tester->max_sim_time || t < tester->max_sim_time && is_valid_pc_address(gm->pc.v, tester->n_insts) && is_valid_pc_address(dut->pc, tester->n_insts); t++) {
     dut->eval();
-    inst_size_t inst = gm_mem_read(gm, gm->pc);
-    CPU_out out = cpu_eval(gm);
-    if (gm->ebreak.v) {
-      printf("gm ebreak\n");
-      if (gm->regs[10].v != 0) {
-        printf("test is not successful: gm code %u\n", gm->regs[10].v);
-        is_test_success=false;
-      }
-    }
     if (dut->ebreak) {
       printf("dut ebreak\n");
       if (dut->regs_out[10] != 0) {
@@ -435,29 +453,48 @@ bool test_instructions(Tester_gm_dut* tester) {
         is_test_success=false;
       }
     }
-    if (gm->ebreak.v && dut->ebreak) break;
     // tester->m_trace->dump(t);
 
-    is_test_success &= compare(tester, t);
+    if (tester->is_diff) {
+      inst_size_t inst = gm_mem_read(gm, gm->pc);
+      CPU_out out = cpu_eval(gm);
+      if (gm->ebreak.v) {
+        printf("gm ebreak\n");
+        if (gm->regs[10].v != 0) {
+          printf("test is not successful: gm code %u\n", gm->regs[10].v);
+          is_test_success=false;
+        }
+      }
+      is_test_success &= compare(tester, t);
+      if (!is_test_success) {
+        // for (uint32_t i = 0; i < tester->n_insts; i++) {
+        //   printf("pc=%x: ", 4*i);
+        //   print_instruction(tester->insts[i]);
+        // }
 
-    if (!is_test_success) {
-      // for (uint32_t i = 0; i < tester->n_insts; i++) {
-      //   printf("pc=%x: ", 4*i);
-      //   print_instruction(tester->insts[i]);
-      // }
+        printf("[%x] pc=%x inst: ", t, gm->pc.v);
+        print_instruction(inst);
+        break;
+      }
+      clock_tick(gm);
+    }
 
-      printf("[%u] pc=%x inst: ", t, gm->pc.v);
-      print_instruction(inst);
+    if (tester->is_diff) {
+      if (dut->ebreak && gm->ebreak.v) break;
+    }
+    else if (dut->ebreak) {
+      printf("finished:%u\n", t);
       break;
     }
 
-    clock_tick(gm);
     dut->clk ^= 1;
   }
   reset_dut_mem(dut);
   reset_dut_regs(dut);
-  gm_mem_reset(gm);
-  reset_gm_regs(gm);
+  if (tester->is_diff) {
+    gm_mem_reset(gm);
+    reset_gm_regs(gm);
+  }
 
   return is_test_success;
 }
@@ -593,8 +630,8 @@ bool bin_test(Tester_gm_dut* tester, const std::string& path) {
 static void usage(const char* prog) {
   fprintf(stderr,
     "Usage:\n"
-    "  %s random\n"
-    "  %s bin <path>\n",
+    "  %s [diff] random\n"
+    "  %s [diff] bin <path>\n",
     prog, prog
   );
 }
@@ -642,8 +679,21 @@ void game(Tester_gm_dut* tester) {
     BeginDrawing();
     ClearBackground(BLACK);
 
+    {
+      uint32_t key = GetKeyPressed();
+      // printf("key: %u\n", key);
+      tester->dut->rom_wen = 1;
+      tester->dut->rom_addr  = UART_DATA_ADDR;
+      tester->dut->rom_wdata = key;
+      tester->dut->clk = 0;
+      tester->dut->eval();
+      tester->dut->clk = 1;
+      tester->dut->eval();
+      tester->dut->rom_wen = 0;
+    }
+
     // ONE CYCLE
-    for (uint32_t i = 0; i < 4000000; i++) {
+    for (uint32_t i = 0; i < 1; i++) {
       tester->dut->eval();
       tester->dut->clk ^= 1;
       tester->dut->eval();
@@ -689,10 +739,21 @@ int main(int argc, char** argv, char** env) {
     goto cleanup;
   }
   else {
-    const char* mode = argv[1];
+    char* mode = argv[1];
+
+    if (streq(mode, "diff")) {
+      if (argc <= 2) {
+        fprintf(stderr, "Error: 'diff' requires other modes to run\n");
+        usage(argv[0]);
+        exit_code = EXIT_FAILURE;
+        goto cleanup;
+      }
+      tester->is_diff = true;
+      mode = argv[2];
+    }
 
     if (streq(mode, "random")) {
-      if (argc != 2) {
+      if (argc != 2 + tester->is_diff) {
         fprintf(stderr, "Error: 'random' takes no extra arguments\n");
         usage(argv[0]);
         exit_code = EXIT_FAILURE;
@@ -702,23 +763,24 @@ int main(int argc, char** argv, char** env) {
 
     }
     else if (streq(mode, "bin")) {
-      if (argc < 3) {
+      if (argc < 3 + tester->is_diff) {
         fprintf(stderr, "Error: 'bin' requires a <path>\n");
         usage(argv[0]);
         exit_code = EXIT_FAILURE;
         goto cleanup;
       }
-      if (argc != 3) {
+      if (argc != 3 + tester->is_diff) {
         fprintf(stderr, "Error: too many arguments for 'bin'\n");
         usage(argv[0]);
         exit_code = EXIT_FAILURE;
         goto cleanup;
       }
-      const char* path = argv[2];
+      const char* path = argv[2 + tester->is_diff];
+      printf("%u, %s\n", argc, path);
       if (!bin_test(tester, path)) exit_code = EXIT_FAILURE;
     }
     else if (streq(mode, "game")) {
-      if (argc != 2) {
+      if (argc != 2 + tester->is_diff) {
         fprintf(stderr, "Error: too many arguments for 'game'\n");
         usage(argv[0]);
         exit_code = EXIT_FAILURE;

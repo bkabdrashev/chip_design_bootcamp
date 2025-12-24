@@ -34,6 +34,7 @@
 #define REG_A0 (0x10)
 
 #define OPCODE_EBREAK (0b1110011)
+#define OPCODE_OUT    (0b0001011)
 
 struct bit {
   uint32_t v : 1;
@@ -83,7 +84,9 @@ struct miniRV {
   reg_size_t regs[N_REGS];
   byte mem[MEM_SIZE];
   byte vga[VGA_SIZE];
-  byte kbd[KBD_SIZE];
+
+  uint8_t*  uart_ref;
+  uint32_t* time_uptime_ref;
 
   bit ebreak;
 
@@ -155,7 +158,6 @@ reg_size_t alu_eval(opcode_size_t opcode, reg_size_t rdata1, reg_size_t rdata2, 
 void gm_mem_reset(miniRV* cpu) {
   memset(cpu->mem, 0, MEM_SIZE);
   memset(cpu->vga, 0, VGA_SIZE);
-  memset(cpu->kbd, 0, KBD_SIZE);
 }
 
 inst_size_t gm_mem_read(miniRV* cpu, addr_size_t addr) {
@@ -172,11 +174,14 @@ inst_size_t gm_mem_read(miniRV* cpu, addr_size_t addr) {
       cpu->mem[addr.v+3].v << 24 | cpu->mem[addr.v+2].v << 16 |
       cpu->mem[addr.v+1].v <<  8 | cpu->mem[addr.v+0].v <<  0 ;
   }
-  else if (addr.v >= KBD_START && addr.v < KBD_END-3) {
-    addr.v -= KBD_START;
-    result.v = 
-      cpu->kbd[addr.v+3].v << 24 | cpu->kbd[addr.v+2].v << 16 |
-      cpu->kbd[addr.v+1].v <<  8 | cpu->kbd[addr.v+0].v <<  0 ;
+  else if (addr.v == UART_STATUS_ADDR) {
+    result.v = cpu->uart_ref[4];
+  }
+  else if (addr.v == TIME_UPTIME_ADDR) {
+    result.v = cpu->time_uptime_ref[0];
+  }
+  else if (addr.v == TIME_UPTIME_ADDR + 4) {
+    result.v = cpu->time_uptime_ref[1];
   }
   else {
     // printf("GM WARNING: mem read memory is not mapped\n");
@@ -221,20 +226,8 @@ void gm_mem_write(miniRV* cpu, bit write_enable, bit4 write_enable_bytes, addr_s
           cpu->mem[addr.v + 3].v = (write_data.v >> 24) & 0xff;
         }
       }
-      else if (addr.v >= KBD_START && addr.v < KBD_END-3) {
-        addr.v -= KBD_START;
-        if (write_enable_bytes.bits[0].v) {
-          cpu->kbd[addr.v + 0].v = (write_data.v >>  0) & 0xff;
-        }
-        if (write_enable_bytes.bits[1].v) {
-          cpu->kbd[addr.v + 1].v = (write_data.v >>  8) & 0xff;
-        }
-        if (write_enable_bytes.bits[2].v) {
-          cpu->kbd[addr.v + 2].v = (write_data.v >> 16) & 0xff;
-        }
-        if (write_enable_bytes.bits[3].v) {
-          cpu->kbd[addr.v + 3].v = (write_data.v >> 24) & 0xff;
-        }
+      else if (addr.v == UART_DATA_ADDR) {
+        putc(write_data.v & 0xff, stderr);
       }
       else {
         // printf("GM WARNING: mem write memory is not mapped\n");
@@ -395,6 +388,11 @@ void print_instruction(inst_size_t inst) {
     case OPCODE_EBREAK: {
       // EBREAK
       printf("ebreak\n");
+    } break;
+
+    case OPCODE_OUT: {
+      // OUT
+      printf("out rs1=x%u\n", dec.reg_src1.v);
     } break;
 
     default: { // NOT IMPLEMENTED

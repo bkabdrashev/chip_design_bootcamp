@@ -103,6 +103,7 @@ module miniRV (
       wdata = 0;
       pc_addr = 0;
       is_pc_jump = 0;
+
       ebreak = 0;
     end else begin
       if (dec_opcode == 7'b0010011) begin
@@ -114,6 +115,7 @@ module miniRV (
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b1100111) begin
         // JALR
@@ -125,6 +127,7 @@ module miniRV (
         wdata = pc+4;
         pc_addr = (rdata1 + dec_imm) & ~3;
         is_pc_jump = 1;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0110011) begin
         // ADD
@@ -136,6 +139,7 @@ module miniRV (
         wdata = alu_res;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0110111) begin
         // LUI
@@ -147,6 +151,7 @@ module miniRV (
         wdata = dec_imm;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b010) begin
         // LW
@@ -158,6 +163,7 @@ module miniRV (
         wdata = ram_rdata;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b100) begin
         // LBU
@@ -169,6 +175,7 @@ module miniRV (
         wdata = ram_rdata & 32'hff;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b010) begin
         // SW
@@ -180,6 +187,7 @@ module miniRV (
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b000) begin
         // SB
@@ -191,6 +199,7 @@ module miniRV (
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end else if (dec_opcode == 7'b1110011 && dec_imm == 1) begin
         // EBREAK
@@ -217,6 +226,7 @@ module miniRV (
         wdata = 0;
         pc_addr = 0;
         is_pc_jump = 0;
+
         ebreak = 0;
       end
     end

@@ -1,12 +1,24 @@
 #include "svdpi.h"
 #include "memory.h"
+#include <time.h>
 #include "stdio.h"
 
 #include "mem_map.h"
 
 static uint8_t memory[MEM_SIZE];
 static uint8_t vga[VGA_SIZE];
-static uint8_t kbd[KBD_SIZE];
+static uint8_t uart[UART_SIZE];
+static uint32_t time_uptime[2];
+
+static uint8_t status = 0;
+
+uint64_t get_time_us() {
+  timespec ts{};
+  clock_gettime(CLOCK_REALTIME, &ts);
+  uint64_t res = ((uint64_t)ts.tv_sec) * 1'000'000llu
+       + ((uint64_t)ts.tv_nsec) / 1'000llu;
+  return res;
+}
 
 extern "C" void mem_read(uint32_t address, uint32_t* result) {
   if (address >= VGA_START && address < VGA_END-3) {
@@ -22,13 +34,26 @@ extern "C" void mem_read(uint32_t address, uint32_t* result) {
     *result = 
       memory[address + 3] << 24 | memory[address + 2] << 16 |
       memory[address + 1] <<  8 | memory[address + 0] <<  0 ;
-
   }
-  else if (address >= KBD_START && address < KBD_END-3) {
-    address -= KBD_START;
-    *result = 
-      kbd[address + 3] << 24 | kbd[address + 2] << 16 |
-      kbd[address + 1] <<  8 | kbd[address + 0] <<  0 ;
+  else if (address == UART_STATUS_ADDR) {
+    *result = status != 0;
+    status++;
+    status %= 7;
+    uart[4] = *result; // save uart status for gm 
+    // printf("try read uart: %p, %u\n", address, *result);
+  }
+  else if (address == TIME_UPTIME_ADDR) {
+    // printf("try read uart: %p, %u\n", address, *result);
+    uint64_t time_us = get_time_us();
+    *result = (time_us & 0xffffffff);
+    time_uptime[0] = *result; // save time low for gm 
+    // printf("time low:%u\n", *result);
+  }
+  else if (address == TIME_UPTIME_ADDR+4) {
+    uint64_t time_us = get_time_us();
+    *result = (time_us >> 32);
+    time_uptime[1] = *result; // save time high for gm 
+    // printf("time:%lu\n", time_us);
   }
   else {
     // printf("DUT WARNING: mem_read memory is not mapped: %x\n", address);
@@ -43,8 +68,6 @@ extern "C" void mem_write(uint32_t address, uint32_t write_data, uint8_t wstrb) 
   uint8_t byte3 = (write_data >> 24) & 0xff;
   if (address >= VGA_START && address < VGA_END-3) {
     // if (address >= VGA_START+VGA_SIZE-100) {
-      // printf("try write vga: %p, %u, %u\n", address, write_data, wstrb);
-      // getchar();
     // }
     address -= VGA_START;
     if (wstrb & (1<<0)) {
@@ -61,12 +84,9 @@ extern "C" void mem_write(uint32_t address, uint32_t write_data, uint8_t wstrb) 
     if (wstrb & (1<<2)) memory[address + 2] = byte2;
     if (wstrb & (1<<3)) memory[address + 3] = byte3;
   }
-  else if (address >= KBD_START && address < KBD_END-3) {
-    address -= KBD_START;
-    if (wstrb & (1<<0)) kbd[address + 0] = byte0;
-    if (wstrb & (1<<1)) kbd[address + 1] = byte1;
-    if (wstrb & (1<<2)) kbd[address + 2] = byte2;
-    if (wstrb & (1<<3)) kbd[address + 3] = byte3;
+  else if (address == UART_DATA_ADDR) {
+    // printf("try write uart: %p, %u, %u\n", address, write_data, wstrb);
+    fputc(byte0, stderr);
   }
   else {
     // printf("DUT WARNING: mem_write memory is not mapped: %x\n", address);
@@ -76,7 +96,6 @@ extern "C" void mem_write(uint32_t address, uint32_t write_data, uint8_t wstrb) 
 extern "C" void mem_reset() {
   memset(memory, 0, MEM_SIZE);
   memset(vga, 0, VGA_SIZE);
-  memset(kbd, 0, KBD_SIZE);
 }
 extern "C" void mem_ptr(uint64_t* out) {
   *out = (uint64_t)memory;
@@ -84,4 +103,11 @@ extern "C" void mem_ptr(uint64_t* out) {
 
 extern "C" void vga_ptr(uint64_t* out) {
   *out = (uint64_t)vga;
+}
+
+extern "C" void uart_ptr(uint64_t* out) {
+  *out = (uint64_t)uart;
+}
+extern "C" void time_ptr(uint64_t* out) {
+  *out = (uint64_t)time_uptime;
 }
