@@ -11,13 +11,14 @@ module miniRV (
 );
 
   logic [31:0] inst;
-  logic [4:0] dec_rd;
-  logic [4:0] dec_rs1;
-  logic [4:0] dec_rs2;
-  logic [31:0] dec_imm;
-  logic        dec_wen;
-  logic [6:0]  dec_opcode;
-  logic [2:0]  dec_funct3;
+  logic [4:0] rd;
+  logic [4:0] rs1;
+  logic [4:0] rs2;
+  logic [31:0] imm;
+  logic        reg_wen;
+  logic [6:0]  opcode;
+  logic [2:0]  funct3;
+  logic [6:0]  funct7;
 
   logic is_pc_jump;
   logic [31:0] pc_addr;
@@ -26,7 +27,7 @@ module miniRV (
   logic [31:0] rdata2;
   logic [31:0] alu_res;
 
-  logic [31:0] wdata;
+  logic [31:0] reg_wdata;
 
   logic        ram_wen;
  /* verilator lint_off UNOPTFLAT */
@@ -62,20 +63,23 @@ module miniRV (
   dec u_dec(
     .inst(inst),
 
-    .rd(dec_rd),
-    .rs1(dec_rs1),
-    .rs2(dec_rs2),
-    .imm(dec_imm),
-    .wen(dec_wen),
-    .opcode(dec_opcode),
-    .funct3(dec_funct3)
+    .rd(rd),
+    .rs1(rs1),
+    .rs2(rs2),
+    .imm(imm),
+    .wen(reg_wen),
+    .opcode(opcode),
+    .funct3(funct3),
+    .funct7(funct7)
   );
 
   alu u_alu(
-    .opcode(dec_opcode),
+    .opcode(opcode),
     .rdata1(rdata1),
     .rdata2(rdata2),
-    .imm(dec_imm),
+    .imm(imm),
+    .funct3(funct3),
+    .funct7(funct7),
 
     .rout(alu_res)
   );
@@ -83,11 +87,11 @@ module miniRV (
   rf u_rf(
     .clk(clk),
     .reset(reg_reset),
-    .wen(dec_wen),
-    .rd(dec_rd),
-    .wdata(wdata),
-    .rs1(dec_rs1),
-    .rs2(dec_rs2),
+    .wen(reg_wen),
+    .rd(rd),
+    .wdata(reg_wdata),
+    .rs1(rs1),
+    .rs2(rs2),
 
     .rdata1(rdata1),
     .rdata2(rdata2),
@@ -95,139 +99,64 @@ module miniRV (
   );
 
   always_comb begin
+    ram_wen = 0;
+    ram_addr = 0;
+    ram_wdata = 0;
+    ram_wstrb = 4'b0000;
+
+    reg_wdata = 0;
+    pc_addr = 0;
+    is_pc_jump = 0;
+
+    ebreak = 0;
     if (rom_wen) begin
       ram_wen = 1;
       ram_addr = rom_addr;
       ram_wdata = rom_wdata;
       ram_wstrb = 4'b1111;
-      wdata = 0;
-      pc_addr = 0;
-      is_pc_jump = 0;
-
-      ebreak = 0;
     end else begin
-      if (dec_opcode == 7'b0010011) begin
-        // ADDI
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-        wdata = alu_res;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b1100111) begin
+      if (opcode == 7'b0010011) begin // ADDI, SLLI, SRLI, SRAI
+        reg_wdata = alu_res;
+      end else if (opcode == 7'b1100111) begin
         // JALR
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 0;
-
-        wdata = pc+4;
-        pc_addr = (rdata1 + dec_imm) & ~3;
+        reg_wdata = pc+4;
+        pc_addr = (rdata1 + imm) & ~3;
         is_pc_jump = 1;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0110011) begin
+      end else if (opcode == 7'b0110011) begin
         // ADD
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-
-        wdata = alu_res;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0110111) begin
+        reg_wdata = alu_res;
+      end else if (opcode == 7'b0110111) begin
         // LUI
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-
-        wdata = dec_imm;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b010) begin
+        reg_wdata = imm;
+      end else if (opcode == 7'b0000011 && funct3 == 3'b010) begin
         // LW
-        ram_wen = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-        ram_addr = rdata1 + dec_imm;
-
-        wdata = ram_rdata;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0000011 && dec_funct3 == 3'b100) begin
+        ram_addr = rdata1 + imm;
+        reg_wdata = ram_rdata;
+      end else if (opcode == 7'b0000011 && funct3 == 3'b100) begin
         // LBU
-        ram_wen = 0;
-        ram_wdata = 0;
-        ram_wstrb = 0;
-        ram_addr = rdata1 + dec_imm;
+        ram_addr = rdata1 + imm;
 
-        wdata = ram_rdata & 32'hff;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b010) begin
+        reg_wdata = ram_rdata & 32'hff;
+      end else if (opcode == 7'b0100011 && funct3 == 3'b010) begin
         // SW
         ram_wen = 1;
-        ram_addr = rdata1 + dec_imm;
+        ram_addr = rdata1 + imm;
         ram_wdata = rdata2;
         ram_wstrb = 4'b1111;
 
-        wdata = 0;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b0100011 && dec_funct3 == 3'b000) begin
+      end else if (opcode == 7'b0100011 && funct3 == 3'b000) begin
         // SB
         ram_wen = 1;
-        ram_addr = rdata1 + dec_imm;
+        ram_addr = rdata1 + imm;
         ram_wdata = rdata2 & 32'hff;
         ram_wstrb = 4'b0001;
-
-        wdata = 0;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
-      end else if (dec_opcode == 7'b1110011 && dec_imm == 1) begin
+      end else if (opcode == 7'b1110011 && imm == 1) begin
         // EBREAK
-
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-
-        wdata = 0;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
         ebreak = 1;
         // $finish;
       end else begin
         // $strobe ("DUT WARNING: not implemented %h", clk);
         // NOT IMPLEMENTED
-        ram_wen = 0;
-        ram_addr = 0;
-        ram_wdata = 0;
-        ram_wstrb = 4'b0000;
-
-        wdata = 0;
-        pc_addr = 0;
-        is_pc_jump = 0;
-
-        ebreak = 0;
       end
     end
   end

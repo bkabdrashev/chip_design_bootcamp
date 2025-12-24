@@ -5,6 +5,7 @@
 #define ERROR_INVALID_RANGE   (2020)
 #define OPCODE_BITS 7u
 #define FUNCT3_BITS 3u
+#define FUNCT7_BITS 7u
 #define REG_INDEX_BITS 5u
 #define ADDR_BITS 32u
 #define REG_BITS 32u
@@ -16,6 +17,11 @@
 
 #define OPCODE_ADDI  (0b0010011)
 #define FUNCT3_ADDI  (0b000)
+#define FUNCT3_SLLI  (0b001)
+#define FUNCT3_SRLI  (0b101)
+#define FUNCT7_SRLI  (0b0000000)
+#define FUNCT7_SRAI  (0b0100000)
+
 #define OPCODE_JALR  (0b1100111)
 #define FUNCT3_JALR  (0b000)
 #define OPCODE_ADD   (0b0110011)
@@ -23,11 +29,9 @@
 #define OPCODE_LUI   (0b0110111)
 #define FUNCT3_LUI   (0b000)
 #define OPCODE_LW    (0b0000011)
-#define OPCODE_LBU   (OPCODE_LW)
 #define FUNCT3_LW    (0b010)
 #define FUNCT3_LBU   (0b100)
 #define OPCODE_SW    (0b0100011)
-#define OPCODE_SB    (OPCODE_SW)
 #define FUNCT3_SW    (0b010)
 #define FUNCT3_SB    (0b000)
 
@@ -58,7 +62,10 @@ struct opcode_size_t {
   uint32_t v : OPCODE_BITS;
 };
 struct funct3_size_t {
-  uint32_t v : OPCODE_BITS;
+  uint32_t v : FUNCT3_BITS;
+};
+struct funct7_size_t {
+  uint32_t v : FUNCT7_BITS;
 };
 struct addr_size_t {
   uint32_t v : ADDR_BITS;
@@ -140,11 +147,19 @@ bool is_negative_edge(Trigger trigger) {
   return false;
 }
 
-reg_size_t alu_eval(opcode_size_t opcode, reg_size_t rdata1, reg_size_t rdata2, reg_size_t imm) {
+reg_size_t alu_eval(opcode_size_t opcode, reg_size_t rdata1, reg_size_t rdata2, reg_size_t imm, funct3_size_t funct3, funct7_size_t funct7) {
   reg_size_t result = {};
-  if (opcode.v == OPCODE_ADDI) {
-    // ADDI
+  if (opcode.v == OPCODE_ADDI && funct3.v == FUNCT3_ADDI) { // ADDI
     result.v = rdata1.v + imm.v;
+  }
+  else if (opcode.v == OPCODE_ADDI && funct3.v == FUNCT3_SLLI) {
+    result.v = rdata1.v << imm.v;
+  }
+  else if (opcode.v == OPCODE_ADDI && funct3.v == FUNCT3_SRLI && funct7.v == FUNCT7_SRLI) {
+    result.v = rdata1.v >> imm.v;
+  }
+  else if (opcode.v == OPCODE_ADDI && funct3.v == FUNCT3_SRLI && funct7.v == FUNCT7_SRAI) {
+    result.v = sar32(rdata1.v, imm.v);
   }
   else if (opcode.v == OPCODE_ADD) {
     result.v = rdata1.v + rdata2.v;
@@ -286,7 +301,8 @@ struct Dec_out {
   reg_size_t imm;
   opcode_size_t opcode;
   funct3_size_t funct3;
-  bit write_enable;
+  funct7_size_t funct7;
+  bit reg_write_enable;
 };
 
 Dec_out dec_eval(inst_size_t inst) {
@@ -294,37 +310,41 @@ Dec_out dec_eval(inst_size_t inst) {
   out.opcode.v = take_bits_range(inst.v, 0, 6);
   out.reg_dest.v = take_bits_range(inst.v, 7, 11);
   out.funct3.v = take_bits_range(inst.v, 12, 14);
+  out.funct7.v = take_bits_range(inst.v, 25, 31);
   out.reg_src1.v = take_bits_range(inst.v, 15, 19);
   out.reg_src2.v = take_bits_range(inst.v, 20, 24);
   bit sign = {.v=take_bit(inst.v, 31)};
   if (out.opcode.v == OPCODE_ADDI) {
-    // ADDI
+    // ADDI, SLLI, SRLI, SARLI
     if (sign.v) out.imm.v = (~0u << 12) | take_bits_range(inst.v, 20, 31);
     else        out.imm.v = ( 0u << 12) | take_bits_range(inst.v, 20, 31);
-    out.write_enable.v = 1;
+    if (out.funct3.v == FUNCT3_SLLI || out.funct3.v == FUNCT3_SRLI) {
+      out.imm.v &= 0b11111;
+    }
+    out.reg_write_enable.v = 1;
   }
   else if (out.opcode.v == OPCODE_JALR) {
     // JALR
     if (sign.v) out.imm.v = (~0u << 12) | take_bits_range(inst.v, 20, 31);
     else        out.imm.v = ( 0u << 12) | take_bits_range(inst.v, 20, 31);
-    out.write_enable.v = 1;
+    out.reg_write_enable.v = 1;
   }
   else if (out.opcode.v == OPCODE_ADD) {
     // ADD
     if (sign.v) out.imm.v = (~0u << 20) | take_bits_range(inst.v, 12, 31);
     else        out.imm.v = ( 0u << 20) | take_bits_range(inst.v, 12, 31);
-    out.write_enable.v = 1;
+    out.reg_write_enable.v = 1;
   }
   else if (out.opcode.v == OPCODE_LUI) {
     // LUI
     out.imm.v = take_bits_range(inst.v, 12, 31) << 12;
-    out.write_enable.v = 1;
+    out.reg_write_enable.v = 1;
   }
   else if (out.opcode.v == OPCODE_LW) {
     // LW, LBU
     if (sign.v) out.imm.v = (~0u << 12) | take_bits_range(inst.v, 20, 31);
     else        out.imm.v = ( 0u << 12) | take_bits_range(inst.v, 20, 31);
-    out.write_enable.v = 1;
+    out.reg_write_enable.v = 1;
   }
   else if (out.opcode.v == OPCODE_SW) {
     // SW, SB
@@ -333,16 +353,16 @@ Dec_out dec_eval(inst_size_t inst) {
     top_imm <<= 5;
     if (sign.v) out.imm.v = (~0u << 12) | top_imm | bot_imm;
     else        out.imm.v = ( 0u << 12) | top_imm | bot_imm;
-    out.write_enable.v = 0;
+    out.reg_write_enable.v = 0;
   }
   else if (out.opcode.v == OPCODE_EBREAK) {
     // EBREAK
     out.imm.v = take_bits_range(inst.v, 20, 31);
-    out.write_enable.v = 0;
+    out.reg_write_enable.v = 0;
   }
   else {
     out.imm.v = 0;
-    out.write_enable.v = 0;
+    out.reg_write_enable.v = 0;
   }
   return out;
 }
@@ -351,24 +371,44 @@ void print_instruction(inst_size_t inst) {
   Dec_out dec = dec_eval(inst);
   switch (dec.opcode.v) {
     case OPCODE_ADDI: {
-      printf("addi imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      if (dec.funct3.v == FUNCT3_ADDI) { // ADDI
+        printf("addi imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      }
+      else if (dec.funct3.v == FUNCT3_SLLI) { // SLLI
+        printf("slli imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      }
+      else if (dec.funct3.v == FUNCT3_SRLI) { // SRLI
+        if (dec.funct7.v == FUNCT7_SRLI) {
+          printf("srli imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+        }
+        else if (dec.funct7.v == FUNCT7_SRAI) {
+          printf("srai imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+        }
+        else {
+          goto not_implemented;
+        }
+      }
+      else {
+        goto not_implemented;
+      }
+
     } break;
     case OPCODE_JALR: {
-      printf("jalr imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+      printf("jalr imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
     } break;
     case OPCODE_ADD: { // ADD
-      printf("add  rs2=r%u\t rs1=r%u\t rd=r%u\n", dec.reg_src2.v, dec.reg_src1.v, dec.reg_dest.v);
+      printf("add  rs2=x%u\t rs1=x%u\t rd=x%u\n", dec.reg_src2.v, dec.reg_src1.v, dec.reg_dest.v);
     } break;
     case OPCODE_LUI: { // LUI
-      uint32_t v = sar32(dec.imm.v, 12);
-      printf("lui  imm=%i\t rd=r%u\n", v, dec.reg_dest.v);
+      int32_t v = sar32(dec.imm.v, 12);
+      printf("lui  imm=%i\t rd=x%u\n", v, dec.reg_dest.v);
     } break;
     case OPCODE_LW: {
       if (dec.funct3.v == FUNCT3_LW) { // LW
-        printf("lw   imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+        printf("lw   imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
       }
       else if (dec.funct3.v == FUNCT3_LBU) { // LBU
-        printf("lbu  imm=%i\t rs1=r%u\t rd=r%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
+        printf("lbu  imm=%i\t rs1=x%u\t rd=x%u\n", dec.imm.v, dec.reg_src1.v, dec.reg_dest.v);
       }
       else {
         printf("not implemented:%u\n", inst);
@@ -376,10 +416,10 @@ void print_instruction(inst_size_t inst) {
     } break;
     case OPCODE_SW: {
       if (dec.funct3.v == FUNCT3_SW) { // SW
-        printf("sw   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
+        printf("sw   imm=%i\t rs2=x%u\t rs1=x%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
       }
       else if (dec.funct3.v == FUNCT3_SB) { // LBU
-        printf("sb   imm=%i\t rs2=r%u\t rs1=r%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
+        printf("sb   imm=%i\t rs2=x%u\t rs1=x%u\n", dec.imm.v, dec.reg_src2.v, dec.reg_src1.v);
       }
       else {
         printf("not implemented:%u\n", inst);
@@ -396,6 +436,7 @@ void print_instruction(inst_size_t inst) {
     } break;
 
     default: { // NOT IMPLEMENTED
+      not_implemented:
       printf("GM WARNING: not implemented:0x%x\n", inst);
     } break;
   }
@@ -415,7 +456,7 @@ CPU_out cpu_eval(miniRV* cpu) {
   inst_size_t inst = gm_mem_read(cpu, cpu->pc);
   Dec_out dec_out = dec_eval(inst);
   RF_out rf_out = rf_read(cpu, dec_out.reg_src1, dec_out.reg_src2);
-  reg_size_t alu_out = alu_eval(dec_out.opcode, rf_out.rdata1, rf_out.rdata2, dec_out.imm);
+  reg_size_t alu_out = alu_eval(dec_out.opcode, rf_out.rdata1, rf_out.rdata2, dec_out.imm, dec_out.funct3, dec_out.funct7);
 
   addr_size_t in_addr = {};
   bit is_jump = {};
@@ -441,7 +482,7 @@ CPU_out cpu_eval(miniRV* cpu) {
   }
   else if (dec_out.opcode.v == OPCODE_LUI) {
     // LUI
-    reg_write_data.v = dec_out.imm.v;
+    reg_write_data = dec_out.imm;
   }
   else if (dec_out.opcode.v == OPCODE_LW && dec_out.funct3.v == FUNCT3_LW) {
     // LW
@@ -480,7 +521,7 @@ CPU_out cpu_eval(miniRV* cpu) {
   out.ram_addr = ram_addr;
   out.ram_write_data = ram_write_data;
 
-  rf_write(cpu, dec_out.write_enable, dec_out.reg_dest, reg_write_data);
+  rf_write(cpu, dec_out.reg_write_enable, dec_out.reg_dest, reg_write_data);
   gm_mem_write(cpu, ram_write_enable, ram_write_enable_bytes, ram_addr, ram_write_data);
   pc_write(cpu, in_addr, is_jump);
   return out;
@@ -560,6 +601,24 @@ struct GmVcdTrace {
 
 inst_size_t addi(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
   uint32_t inst_u32 = (imm << 20) | (reg_src1 << 15) | (FUNCT3_ADDI << 12) | (reg_dest << 7) | OPCODE_ADDI;
+  inst_size_t result = { inst_u32 };
+  return result;
+}
+
+inst_size_t slli(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
+  uint32_t inst_u32 = (imm << 20) | (reg_src1 << 15) | (FUNCT3_SLLI << 12) | (reg_dest << 7) | OPCODE_ADDI;
+  inst_size_t result = { inst_u32 };
+  return result;
+}
+
+inst_size_t srli(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
+  uint32_t inst_u32 = (FUNCT7_SRLI << 25) | (imm << 20) | (reg_src1 << 15) | (FUNCT3_SRLI << 12) | (reg_dest << 7) | OPCODE_ADDI;
+  inst_size_t result = { inst_u32 };
+  return result;
+}
+
+inst_size_t srai(uint32_t imm, uint32_t reg_src1, uint32_t reg_dest) {
+  uint32_t inst_u32 = (FUNCT7_SRAI << 25) | (imm << 20) | (reg_src1 << 15) | (FUNCT3_SRLI << 12) | (reg_dest << 7) | OPCODE_ADDI;
   inst_size_t result = { inst_u32 };
   return result;
 }

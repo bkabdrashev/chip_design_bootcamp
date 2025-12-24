@@ -1,0 +1,19 @@
+NO SLLI, SRLI, SRAI:
+Trying 15000 runs through Dhrystone.
+Finished in 12761 ms
+==================================================
+Dhrystone PASS         2 Marks
+                   vs. 100000 Marks (i7-7700K @ 4.20GHz)
+dut ebreak
+finished:147342957
+
+SLLI, SRLI, SRAI:
+
+Trying 15000 runs through Dhrystone.
+Finished in 12018 ms
+==================================================
+Dhrystone PASS         2 Marks
+                   vs. 100000 Marks (i7-7700K @ 4.20GHz)
+dut ebreak
+finished:141675951
+

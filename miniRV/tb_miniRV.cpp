@@ -280,7 +280,7 @@ uint32_t random_bits(std::mt19937* gen, uint32_t n) {
 }
 
 inst_size_t random_instruction(std::mt19937* gen) {
-  uint32_t inst_id = random_range(gen, 0, 8); // NOTE: don't test ebreak right now
+  uint32_t inst_id = random_range(gen, 0, 11); // NOTE: don't test ebreak right now
   inst_size_t inst = {};
   switch (inst_id) {
     case 0: { // ADDI
@@ -331,7 +331,25 @@ inst_size_t random_instruction(std::mt19937* gen) {
       uint32_t rs1  = random_bits(gen, 4);
       inst = sb(imm, rs2, rs1);
     } break;
-    case 8: { // EBREAK
+    case 8: {
+      uint32_t imm = random_bits(gen, 5);
+      uint32_t rs1 = random_bits(gen, 4);
+      uint32_t rd  = random_bits(gen, 4);
+      inst = slli(imm, rs1, rd);
+    } break;
+    case 9: {
+      uint32_t imm = random_bits(gen, 5);
+      uint32_t rs1 = random_bits(gen, 4);
+      uint32_t rd  = random_bits(gen, 4);
+      inst = srli(imm, rs1, rd);
+    } break;
+    case 10: {
+      uint32_t imm = random_bits(gen, 5);
+      uint32_t rs1 = random_bits(gen, 4);
+      uint32_t rd  = random_bits(gen, 4);
+      inst = srai(imm, rs1, rd);
+    } break;
+    case 100: { // EBREAK
       inst = ebreak();
     } break;
   }
@@ -499,18 +517,24 @@ bool test_instructions(Tester_gm_dut* tester) {
   return is_test_success;
 }
 
+void print_all_instructions(Tester_gm_dut* tester) {
+  for (uint32_t i = 0; i < tester->n_insts; i++) {
+    print_instruction(tester->insts[i]);
+  }
+}
+
 bool random_difftest(Tester_gm_dut* tester) {
   tester->n_insts = 500;
   tester->insts = new inst_size_t[tester->n_insts];
   bool is_tests_success = true;
   uint64_t tests_passed = 0;
   tester->max_sim_time = 2000;
-  uint64_t max_tests = 200;
+  uint64_t max_tests = 2000;
   uint64_t seed = hash_uint64_t(std::time(0));
   // uint64_t seed = 3263282379841580567lu;
   // uint64_t seed = 10714955119269546755lu;
   // uint64_t seed = 12610096651643082169lu;
-  // uint64_t seed = 1451270821828317064lu;
+  // uint64_t seed = 3140147796470050829lu;
   uint64_t i_test = 0;
   do {
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, max_tests);
@@ -526,6 +550,9 @@ bool random_difftest(Tester_gm_dut* tester) {
     is_tests_success &= test_instructions(tester);
     if (is_tests_success) {
       tests_passed++;
+    }
+    else {
+      print_all_instructions(tester);
     }
     seed = hash_uint64_t(seed);
     i_test++;
