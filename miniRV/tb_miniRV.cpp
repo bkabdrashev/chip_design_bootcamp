@@ -117,18 +117,11 @@ void clock_tick(miniRV* cpu) {
   cpu->clock.curr ^= 1;
 }
 
-void reset_dut_regs(VminiRV* dut) {
-  dut->reg_reset = 1;
+void reset_dut(VminiRV* dut) {
+  dut->reset = 1;
   dut->eval();
-  dut->reg_reset = 0;
-  dut->clk = 0;
-}
-
-void reset_dut_mem(VminiRV* dut) {
-  dut->mem_reset = 1;
-  dut->eval();
-  dut->mem_reset = 0;
-  dut->clk = 0;
+  dut->reset = 0;
+  dut->clock = 0;
 }
 
 void reset_gm_regs(miniRV* gm) {
@@ -199,26 +192,6 @@ uint32_t* dut_time_ptr() {
   return (uint32_t*)VminiRV::sv_time_ptr();
 }
 
-void dut_rom_write(uint32_t addr, uint32_t wdata, uint8_t wstrb) {
-  svScope rom_scope = svGetScopeFromName("TOP.miniRV.u_rom");
-  if (!rom_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_rom\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(rom_scope);
-  VminiRV::sv_rom_write(addr, wdata, wstrb);
-}
-
-uint32_t dut_rom_read(uint32_t addr) {
-  svScope rom_scope = svGetScopeFromName("TOP.miniRV.u_rom");
-  if (!rom_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_rom\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(rom_scope);
-  return VminiRV::sv_rom_read(addr);
-}
-
 bool compare_reg(uint64_t sim_time, const char* name, uint32_t dut_v, uint32_t gm_v) {
   if (dut_v != gm_v) {
     printf("Test Failed at time %lu. %s mismatch: dut_v = %i vs gm_v = %i\n", sim_time, name, dut_v, gm_v);
@@ -243,7 +216,7 @@ bool compare(Tester_gm_dut* tester, uint64_t sim_time) {
     char digit0 = i%10 + '0';
     char digit1 = i/10 + '0';
     char name[] = {'R', digit1, digit0, '\0'};
-    result &= compare_reg(sim_time, name, tester->dut->regs_out[i], tester->gm->regs[i].v);
+    result &= compare_reg(sim_time, name, tester->dut->regs[i], tester->gm->regs[i].v);
   }
   // result &= memcmp(tester->gm->vga, tester->dpi_c_vga, VGA_SIZE) == 0;
   // result &= memcmp(tester->gm->mem, tester->dpi_c_memory, MEM_SIZE) == 0;
@@ -438,15 +411,15 @@ bool test_instructions(Tester_gm_dut* tester) {
   uint8_t* dpi_c_memory  = tester->dpi_c_memory;
   uint8_t* dpi_c_vga  = tester->dpi_c_vga;
 
-  dut->clk = 0;
-  dut->rom_wen = 1;
+  dut->clock = 0;
+  dut->top_mem_wen = 1;
   for (uint32_t i = 0; i < tester->n_insts; i++) {
     uint32_t address = 4*i + MEM_START;
-    dut->rom_wdata = tester->insts[i].v;
-    dut->rom_addr = address;
-    dut->clk = 0;
+    dut->top_mem_wdata = tester->insts[i].v;
+    dut->top_mem_addr = address;
+    dut->clock = 0;
     dut->eval();
-    dut->clk = 1;
+    dut->clock = 1;
     dut->eval();
 
     if (tester->is_diff) {
@@ -456,18 +429,17 @@ bool test_instructions(Tester_gm_dut* tester) {
     }
     // print_instruction(tester->insts[i]);
   }
-  dut->rom_wen = 0;
-  reset_dut_regs(dut);
+  dut->top_mem_wen = 0;
   if (tester->is_diff) {
     reset_gm_regs(gm);
   }
-  dut->clk = 0;
+  dut->clock = 0;
   for (uint64_t t = 0; !tester->max_sim_time || t < tester->max_sim_time && is_valid_pc_address(gm->pc.v, tester->n_insts) && is_valid_pc_address(dut->pc, tester->n_insts); t++) {
     dut->eval();
     if (dut->ebreak) {
       printf("dut ebreak\n");
-      if (dut->regs_out[10] != 0) {
-        printf("test is not successful: dut code %u\n", dut->regs_out[10]);
+      if (dut->regs[10] != 0) {
+        printf("test is not successful: dut code %u\n", dut->regs[10]);
         is_test_success=false;
       }
     }
@@ -505,10 +477,9 @@ bool test_instructions(Tester_gm_dut* tester) {
       break;
     }
 
-    dut->clk ^= 1;
+    dut->clock ^= 1;
   }
-  reset_dut_mem(dut);
-  reset_dut_regs(dut);
+  reset_dut(dut);
   if (tester->is_diff) {
     gm_mem_reset(gm);
     reset_gm_regs(gm);
@@ -597,8 +568,7 @@ void vga_image_test() {
   const uint64_t nbytes = width*height*4;
   uint8_t* image = new uint8_t[nbytes];
   auto hex_bytes = read_hex_bytes_one_per_line("vga2.hex");
-  reset_dut_mem(dut);
-  reset_dut_regs(dut);
+  reset_dut(dut);
   for (uint32_t i = 0; i < hex_bytes.size(); i++) {
     dut_ram_write(i, hex_bytes[i], 0b0001);
   }
@@ -606,7 +576,7 @@ void vga_image_test() {
   for (uint64_t t = 0; t < 2000000; t++) {
     uint32_t inst = dut_ram_read(dut->pc);
     dut->eval();
-    dut->clk ^= 1;
+    dut->clock ^= 1;
   }
 
   for (uint64_t i = 0; i < nbytes; i++) {
@@ -684,20 +654,19 @@ void game(Tester_gm_dut* tester) {
     tester->insts[i] = { byte0 | byte1 | byte2 | byte3 };
     // print_instruction(tester->insts[i]);
   }
-  tester->dut->clk = 0;
-  tester->dut->rom_wen = 1;
+  tester->dut->clock = 0;
+  tester->dut->top_mem_wen = 1;
   for (uint32_t i = 0; i < tester->n_insts; i++) {
     uint32_t address = 4*i + MEM_START;
-    tester->dut->rom_wdata = tester->insts[i].v;
-    tester->dut->rom_addr = address;
-    tester->dut->clk = 0;
+    tester->dut->top_mem_wdata = tester->insts[i].v;
+    tester->dut->top_mem_addr = address;
+    tester->dut->clock = 0;
     tester->dut->eval();
-    tester->dut->clk = 1;
+    tester->dut->clock = 1;
     tester->dut->eval();
     // print_instruction(tester->insts[i]);
   }
-  tester->dut->rom_wen = 0;
-  reset_dut_regs(tester->dut);
+  tester->dut->top_mem_wen = 0;
 
   InitWindow(width, height, "Framebuffer viewer");
   SetTargetFPS(60);
@@ -709,22 +678,22 @@ void game(Tester_gm_dut* tester) {
     {
       uint32_t key = GetKeyPressed();
       // printf("key: %u\n", key);
-      tester->dut->rom_wen = 1;
-      tester->dut->rom_addr  = UART_DATA_ADDR;
-      tester->dut->rom_wdata = key;
-      tester->dut->clk = 0;
+      tester->dut->top_mem_wen = 1;
+      tester->dut->top_mem_addr  = UART_DATA_ADDR;
+      tester->dut->top_mem_wdata = key;
+      tester->dut->clock = 0;
       tester->dut->eval();
-      tester->dut->clk = 1;
+      tester->dut->clock = 1;
       tester->dut->eval();
-      tester->dut->rom_wen = 0;
+      tester->dut->top_mem_wen = 0;
     }
 
     // ONE CYCLE
     for (uint32_t i = 0; i < 1; i++) {
       tester->dut->eval();
-      tester->dut->clk ^= 1;
+      tester->dut->clock ^= 1;
       tester->dut->eval();
-      tester->dut->clk ^= 1;
+      tester->dut->clock ^= 1;
     }
 
     // ONE FRAME
