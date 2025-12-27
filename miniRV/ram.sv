@@ -15,46 +15,13 @@ module ram (
   `include "defs.vh"
 /* verilator lint_on UNUSEDPARAM */
 
-  export "DPI-C" function sv_mem_read;
-  function int unsigned sv_mem_read(input int unsigned mem_addr);
-    return mem_read(mem_addr);
-  endfunction
-
-  export "DPI-C" function sv_mem_ptr;
-  function longint unsigned sv_mem_ptr();
-    return mem_ptr();
-  endfunction
-
-  export "DPI-C" function sv_vga_ptr;
-  function longint unsigned sv_vga_ptr();
-    return vga_ptr();
-  endfunction
-
-  export "DPI-C" function sv_uart_ptr;
-  function longint unsigned sv_uart_ptr();
-    return uart_ptr();
-  endfunction
-
-  export "DPI-C" function sv_time_ptr;
-  function longint unsigned sv_time_ptr();
-    return time_ptr();
-  endfunction
-
-  export "DPI-C" function sv_mem_write;
-  function void sv_mem_write(input int unsigned mem_addr, input int unsigned mem_wdata, input byte mem_wbmask);
-    mem_write(mem_addr, mem_wdata, mem_wbmask);
-  endfunction
-
   import "DPI-C" context task mem_write(input int unsigned address, input int unsigned write, input byte wbmask);
   import "DPI-C" context function int unsigned mem_read(input int unsigned address);
+  import "DPI-C" context function bit mem_request();
   import "DPI-C" context task mem_reset();
-  import "DPI-C" context function longint unsigned mem_ptr();
-  import "DPI-C" context function longint unsigned vga_ptr();
-  import "DPI-C" context function longint unsigned uart_ptr();
-  import "DPI-C" context function longint unsigned time_ptr();
 
   logic                  busy;
-  logic [1:0]            counter;
+  // logic [1:0]            counter;
   logic [REG_END_WORD:0] addr_q;
   logic                  wen_q;
   logic [REG_END_WORD:0] wdata_q;
@@ -65,7 +32,7 @@ module ram (
       mem_reset();
       busy      <= 1'b0;
       respValid <= 1'b0;
-      counter   <= '0;
+      // counter   <= '0;
       rdata     <= '0;
       addr_q    <= '0;
       wen_q     <= '0;
@@ -78,7 +45,7 @@ module ram (
       if (!busy) begin
         if (reqValid) begin
           busy     <= 1'b1;
-          counter  <= 2'd0;
+          // counter  <= 2'd0;
           addr_q   <= addr;
           wen_q    <= wen;
           wdata_q  <= wdata;
@@ -86,7 +53,7 @@ module ram (
         end
       end
       else begin
-        if (counter == 3) begin
+        if (mem_request()) begin
           if (wen_q) begin
             rdata <= 32'b0;
             mem_write(addr_q, wdata_q, {4'b0, wbmask_q});
@@ -97,9 +64,6 @@ module ram (
           respValid <= 1'b1;
           busy      <= 1'b0;
           // $display("rdata: %d, wen: %d", rdata, wen);
-        end
-        else begin
-          counter <= counter + 1;
         end
       end
     end

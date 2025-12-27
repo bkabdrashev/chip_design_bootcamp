@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <assert.h>
+#include "c_dpi.h"
 
 #define ERROR_NOT_IMPLEMENTED (1010)
 #define ERROR_INVALID_RANGE   (2020)
@@ -12,7 +13,6 @@
 #define BYTE 8u
 #define INST_BITS 32u
 
-#include "mem_map.h"
 #define N_REGS 16u
 
 #define OPCODE_ADDI  (0b0010011)
@@ -92,8 +92,8 @@ struct miniRV {
   byte mem[MEM_SIZE];
   byte vga[VGA_SIZE];
 
-  uint8_t*  uart_ref;
-  uint32_t* time_uptime_ref;
+  uint8_t*  uart_status_ref;
+  uint64_t* time_uptime_ref;
 
   bit ebreak;
 
@@ -190,13 +190,13 @@ inst_size_t gm_mem_read(miniRV* cpu, addr_size_t addr) {
       cpu->mem[addr.v+1].v <<  8 | cpu->mem[addr.v+0].v <<  0 ;
   }
   else if (addr.v == UART_STATUS_ADDR) {
-    result.v = cpu->uart_ref[4];
+    result.v = *cpu->uart_status_ref;
   }
   else if (addr.v == TIME_UPTIME_ADDR) {
-    result.v = cpu->time_uptime_ref[0];
+    result.v = *cpu->time_uptime_ref & 0xffffff;
   }
   else if (addr.v == TIME_UPTIME_ADDR + 4) {
-    result.v = cpu->time_uptime_ref[1];
+    result.v = *cpu->time_uptime_ref >> 32;
   }
   else {
     // printf("GM WARNING: mem read memory is not mapped\n");

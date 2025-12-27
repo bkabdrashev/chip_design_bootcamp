@@ -8,6 +8,7 @@
 #include <verilated_vcd_c.h>
 #include "VminiRV.h"
 #include "gm.cpp"
+// #include "c_dpi.cpp"
 
 #include <fstream>
 #include <vector>
@@ -171,63 +172,11 @@ void reset_gm_regs(miniRV* gm) {
 }
 
 void dut_ram_write(uint32_t addr, uint32_t wdata, uint8_t wstrb) {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  VminiRV::sv_mem_write(addr, wdata, wstrb);
+  mem_write(addr, wdata, wstrb);
 }
 
 uint32_t dut_ram_read(uint32_t addr) {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  return VminiRV::sv_mem_read(addr);
-}
-
-uint8_t* dut_ram_ptr() {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  return (uint8_t*)VminiRV::sv_mem_ptr();
-}
-
-uint8_t* dut_vga_ptr() {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  return (uint8_t*)VminiRV::sv_vga_ptr();
-}
-
-uint8_t* dut_uart_ptr() {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  return (uint8_t*)VminiRV::sv_uart_ptr();
-}
-
-uint32_t* dut_time_ptr() {
-  svScope ram_scope = svGetScopeFromName("TOP.miniRV.u_ram");
-  if (!ram_scope) {
-    std::cerr << "ERROR: svGetScopeFromName(\"TOP.miniRV.u_ram\") returned NULL\n";
-    std::exit(1);
-  }
-  svSetScope(ram_scope);
-  return (uint32_t*)VminiRV::sv_time_ptr();
+  return mem_read(addr);
 }
 
 bool compare_reg(uint64_t sim_time, const char* name, uint32_t dut_v, uint32_t gm_v) {
@@ -271,12 +220,6 @@ bool compare(Tester_gm_dut* tester, uint64_t sim_time) {
     }
   }
   return result;
-}
-
-uint64_t hash_uint64_t(uint64_t x) {
-  x *= 0xff51afd7ed558ccd;
-  x ^= x >> 32;
-  return x;
 }
 
 uint32_t random_range(std::mt19937* gen, uint32_t ge, uint32_t lt) {
@@ -412,10 +355,9 @@ Tester_gm_dut* new_tester() {
   // result->m_trace->spTrace()->addFullCb(&GmVcdTrace::full_cb, 0, result->gm_trace);
   // result->m_trace->spTrace()->addChgCb (&GmVcdTrace::chg_cb,  0, result->gm_trace);
 
-  result->dpi_c_memory = dut_ram_ptr();
-  result->dpi_c_vga = dut_vga_ptr();
-  result->gm->uart_ref = dut_uart_ptr();
-  result->gm->time_uptime_ref = dut_time_ptr();
+  result->dpi_c_memory = memory;
+  result->gm->uart_status_ref = &uart_status;
+  result->gm->time_uptime_ref = &time_uptime;
 
   result->n_insts = 0;
   result->insts = nullptr;
