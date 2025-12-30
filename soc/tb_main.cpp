@@ -77,13 +77,32 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
 
 extern "C" void flash_init(uint8_t* data, uint32_t size);
 
+struct TestBench {
+  VerilatedContext* contextp;
+  CPU* cpu;
+  VerilatedVcdC* trace;
+  uint64_t cycles;
+};
+
+void cycle(TestBench* tb) {
+  tb->cpu->eval();
+  // tb->trace->dump(tb->cycles++);
+  tb->cpu->clock ^= 1;
+
+  tb->cpu->eval();
+  // tb->trace->dump(tb->cycles++);
+  tb->cpu->clock ^= 1;
+}
+
 int main(int argc, char** argv, char** env) {
-  VerilatedContext* contextp = new VerilatedContext;
-  CPU* cpu = new CPU;
-  Verilated::traceEverOn(true);
-  VerilatedVcdC* m_trace = new VerilatedVcdC;
-  cpu->trace(m_trace, 5);
-  // m_trace->open("waveform.vcd");
+  TestBench* tb = new TestBench;
+  tb->contextp = new VerilatedContext;
+  tb->cpu = new CPU;
+  // Verilated::traceEverOn(true);
+  // tb->trace = new VerilatedVcdC;
+  // tb->cpu->trace(tb->trace, 5);
+  // tb->trace->open("waveform.vcd");
+  uint64_t counter = 0;
 
   uint8_t* data = NULL;
   size_t   size = 0;
@@ -97,33 +116,36 @@ int main(int argc, char** argv, char** env) {
   18:	00100073          	ebreak
     */
   // read_bin_file("code2.bin", &data, &size);
-  // read_bin_file("hello-minirv-ysyxsoc.bin", &data, &size);
-  read_bin_file("dummy-minirv-ysyxsoc.bin", &data, &size);
+  read_bin_file("hello-minirv-ysyxsoc.bin", &data, &size);
+  // read_bin_file("dummy-minirv-ysyxsoc.bin", &data, &size);
+  // read_bin_file("dummy-flash-ysyxsoc.bin", &data, &size);
   flash_init(data, (uint32_t)size);
 
   uint64_t max_sim_time = 0;
-  cpu->reset = 1;
 
-  cpu->clock = 0;
-  cpu->eval();
-  uint64_t counter = 0;
-  // m_trace->dump(counter++);
+  tb->cpu->reset = 1;
+  tb->cpu->clock = 0;
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  cycle(tb);
+  tb->cpu->reset = 0;
 
-  cpu->clock = 1;
-  cpu->eval();
-  // m_trace->dump(counter++);
-
-  cpu->clock = 0;
-  cpu->reset = 0;
-
-  for (uint64_t t = 0; (!max_sim_time || t < max_sim_time) && !contextp->gotFinish(); t++) {
-    cpu->eval();
-    cpu->clock ^= 1;
-    // m_trace->dump(counter++);
+  printf("start\n");
+  for (uint64_t t = 0; !max_sim_time || t < max_sim_time; t++) {
+    cycle(tb);
+    if (tb->contextp->gotFinish()) break;
   }
-  printf("exit\n");
+  printf("finish\n");
 
-  // m_trace->close();
+  // tb->trace->close();
   int exit_code = EXIT_SUCCESS;
   return exit_code;
 }
