@@ -57,21 +57,21 @@ module dec (
       OPCODE_LOAD: begin
         imm = i_imm;
         case (funct3)
-          FUNCT3_BYTE:        inst_type = {2'b10,funct3[1:0]};
-          FUNCT3_HALF:        inst_type = {2'b10,funct3[1:0]};
-          FUNCT3_WORD:        inst_type = {2'b10,funct3[1:0]};
-          FUNCT3_BYTE_UNSIGN: inst_type = {2'b10,funct3[1:0]};
-          FUNCT3_HALF_UNSIGN: inst_type = {2'b10,funct3[1:0]};
-          default:            inst_type = 0;        
+          FUNCT3_BYTE:        begin inst_type = {2'b10,funct3[1:0]}; mem_size = 2'b00; end
+          FUNCT3_HALF:        begin inst_type = {2'b10,funct3[1:0]}; mem_size = 2'b01; end
+          FUNCT3_WORD:        begin inst_type = {2'b10,funct3[1:0]}; mem_size = 2'b10; end
+          FUNCT3_BYTE_UNSIGN: begin inst_type = {2'b10,funct3[1:0]}; mem_size = 2'b01; end
+          FUNCT3_HALF_UNSIGN: begin inst_type = {2'b10,funct3[1:0]}; mem_size = 2'b10; end
+          default:            begin inst_type = 0;                   mem_size = 2'b00; end
         endcase
       end
       OPCODE_STORE: begin
         imm = s_imm;
         case (funct3)
-          FUNCT3_BYTE:        mem_wbmask = 4'b0001;
-          FUNCT3_HALF:        mem_wbmask = 4'b0011;
-          FUNCT3_WORD:        mem_wbmask = 4'b1111;
-          default:            mem_wbmask = 4'b0000;
+          FUNCT3_BYTE:        begin mem_wbmask = 4'b0001; mem_size = 2'b00; end
+          FUNCT3_HALF:        begin mem_wbmask = 4'b0011; mem_size = 2'b01; end
+          FUNCT3_WORD:        begin mem_wbmask = 4'b1111; mem_size = 2'b10; end
+          default:            begin mem_wbmask = 4'b0000; mem_size = 2'b00; end
         endcase
 
         inst_type = INST_STORE;

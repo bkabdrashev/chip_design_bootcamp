@@ -4,6 +4,8 @@ module sm (
 
   input  logic       ifu_respValid,
   input  logic       lsu_respValid,
+  input  logic [31:0]     lsu_rdata,
+  input  logic [31:0]      lsu_addr,
   input  logic [3:0] inst_type,
 
   output logic reg_wen,
@@ -82,7 +84,10 @@ module sm (
         end
       end
       STATE_LOAD: begin
-        if (lsu_respValid && lsu_inflight) begin next = STATE_EXEC; reg_wen = 1; end
+        if (lsu_respValid && lsu_inflight) begin
+          next = STATE_EXEC; reg_wen = 1;
+          if (lsu_addr == 'h1000_0005 && |lsu_rdata) $display("uart lsr: %b", lsu_rdata);
+        end
         else next = STATE_LOAD;
       end
       STATE_STORE: begin

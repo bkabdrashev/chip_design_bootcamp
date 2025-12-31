@@ -10,6 +10,8 @@ typedef VysyxSoCTop CPU;
 #include <stddef.h>  // size_t
 #include <limits.h>  // SIZE_MAX
 
+#include "riscv.cpp"
+
 int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
   if (!out_data || !out_size) return 0;
 
@@ -82,15 +84,25 @@ struct TestBench {
   CPU* cpu;
   VerilatedVcdC* trace;
   uint64_t cycles;
+
+  uint32_t  n_insts;
+  uint32_t* insts;
 };
+
+void print_all_instructions(TestBench* tb) {
+  for (uint32_t i = 0; i < tb->n_insts; i++) {
+    printf("[0x%x], (0x%x)\t", 4*i, tb->insts[i]);
+    print_instruction(tb->insts[i]);
+  }
+}
 
 void cycle(TestBench* tb) {
   tb->cpu->eval();
-  // tb->trace->dump(tb->cycles++);
+  tb->trace->dump(tb->cycles++);
   tb->cpu->clock ^= 1;
 
   tb->cpu->eval();
-  // tb->trace->dump(tb->cycles++);
+  tb->trace->dump(tb->cycles++);
   tb->cpu->clock ^= 1;
 }
 
@@ -98,14 +110,36 @@ int main(int argc, char** argv, char** env) {
   TestBench* tb = new TestBench;
   tb->contextp = new VerilatedContext;
   tb->cpu = new CPU;
-  // Verilated::traceEverOn(true);
-  // tb->trace = new VerilatedVcdC;
-  // tb->cpu->trace(tb->trace, 5);
-  // tb->trace->open("waveform.vcd");
+  Verilated::traceEverOn(true);
+  tb->trace = new VerilatedVcdC;
+  tb->cpu->trace(tb->trace, 5);
+  tb->trace->open("waveform.vcd");
   uint64_t counter = 0;
-
   uint8_t* data = NULL;
   size_t   size = 0;
+  uint32_t insts[5] = {
+    lui(0x80000, REG_SP),     // 0
+    li(0x1234, REG_T0),         // 4
+    sw( 0x4, REG_T0, REG_SP), // 8
+    // li(0x34, REG_T1),         // C
+    // sw( 0x5, REG_T1, REG_SP), // 10
+    lw( 0x4, REG_SP, REG_T2), // 14
+    ebreak()
+  };
+  // uint32_t insts[7] = {
+  //   lui(0x80000, REG_SP),     // 0
+  //   li(0x12, REG_T0),         // 4
+  //   sb( 0x4, REG_T0, REG_SP), // 8
+  //   li(0x34, REG_T1),         // C
+  //   sb( 0x5, REG_T1, REG_SP), // 10
+  //   lw( 0x4, REG_SP, REG_T2), // 14
+  //   ebreak()
+  // };
+  tb->insts = insts;
+  tb->n_insts = 5;
+  print_all_instructions(tb);
+  data = (uint8_t*)insts;
+  size = tb->n_insts*4;
   /*
    0:	555550b7          	lui	x1,0x55555
    4:	00108093          	addi	x1,x1,1 # 0x55555001
@@ -116,8 +150,8 @@ int main(int argc, char** argv, char** env) {
   18:	00100073          	ebreak
     */
   // read_bin_file("code2.bin", &data, &size);
-  read_bin_file("hello-minirv-ysyxsoc.bin", &data, &size);
-  // read_bin_file("dummy-minirv-ysyxsoc.bin", &data, &size);
+  // read_bin_file("hello-minirv-ysyxsoc.bin", &data, &size);
+  read_bin_file("dummy-minirv-ysyxsoc.bin", &data, &size);
   // read_bin_file("dummy-flash-ysyxsoc.bin", &data, &size);
   flash_init(data, (uint32_t)size);
 
@@ -125,17 +159,9 @@ int main(int argc, char** argv, char** env) {
 
   tb->cpu->reset = 1;
   tb->cpu->clock = 0;
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
-  cycle(tb);
+  for (uint64_t i = 0; i < 10; i++) {
+    cycle(tb);
+  }
   tb->cpu->reset = 0;
 
   printf("start\n");
@@ -145,7 +171,7 @@ int main(int argc, char** argv, char** env) {
   }
   printf("finish\n");
 
-  // tb->trace->close();
+  tb->trace->close();
   int exit_code = EXIT_SUCCESS;
   return exit_code;
 }

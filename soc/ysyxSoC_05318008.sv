@@ -94,6 +94,8 @@ module ysyxSoC_05318008 (
     .clock(clock),
     .reset(reset),
 
+    .lsu_addr(io_lsu_addr),
+    .lsu_rdata(io_lsu_rdata),
     .ifu_respValid(io_ifu_respValid),
     .lsu_respValid(io_lsu_respValid),
     .inst_type(inst_type),
@@ -136,7 +138,7 @@ module ysyxSoC_05318008 (
     endcase
 
     if (pc_wen) begin
-       if (inst_type == INST_JUMP) pc_next = alu_res & ~3;
+       if (inst_type == INST_JUMP) pc_next = alu_res;
        else pc_next = pc_inc;
     end
     else pc_next = pc;
