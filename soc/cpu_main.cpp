@@ -1,10 +1,6 @@
 #include <verilated.h>
 #include <verilated_vcd_c.h>
-#include "VysyxSoCTop.h"
-// #include "Vcpu.h"
-
-typedef VysyxSoCTop SoC;
-// typedef Vcpu        CPU;
+#include "Vcpu.h"
 
 #include <stdio.h>   // fopen, fseek, ftell, fread, fclose, fprintf
 #include <stdlib.h>  // malloc, free
@@ -13,6 +9,7 @@ typedef VysyxSoCTop SoC;
 #include <limits.h>  // SIZE_MAX
 
 #include "riscv.cpp"
+#include "gcpu.cpp"
 
 int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
   if (!out_data || !out_size) return 0;
@@ -88,6 +85,11 @@ struct TestBenchConfig {
   bool is_bin    = false;
   char* bin_file = NULL;
   uint64_t max_cycles = 0;
+
+  bool is_diff = false;
+  bool is_random = false;
+  uint64_t max_tests = 0;
+  uint32_t  n_insts;
 };
 
 struct TestBench {
@@ -97,9 +99,14 @@ struct TestBench {
   bool is_bin;
   char* bin_file;
   uint64_t max_cycles;
+
+  bool is_diff;
+  bool is_random;
+  uint64_t max_tests;
+
   VerilatedContext* contextp;
-  // CPU cpu;
-  SoC* soc;
+  Vcpu* vcpu;
+  Gcpu* gcpu;
   VerilatedVcdC* trace;
   uint64_t cycles;
 
@@ -116,10 +123,10 @@ void print_all_instructions(TestBench* tb) {
 }
 
 void tick(TestBench* tb) {
-  tb->soc->eval();
+  tb->vcpu->eval();
   if (tb->is_trace) tb->trace->dump(tb->cycles);
   tb->cycles++;
-  tb->soc->clock ^= 1;
+  tb->vcpu->clock ^= 1;
 }
 
 void cycle(TestBench* tb) {
@@ -128,40 +135,67 @@ void cycle(TestBench* tb) {
 }
 
 void reset(TestBench* tb) {
-  tb->soc->reset = 1;
-  tb->soc->clock = 0;
+  printf("[INFO] reset\n");
+  tb->vcpu->reset = 1;
+  tb->vcpu->clock = 0;
   for (uint64_t i = 0; i < 10; i++) {
     cycle(tb);
   }
-  tb->soc->reset = 0;
+  tb->vcpu->reset = 0;
 }
 
 void run(TestBench* tb) {
-  tb->soc->clock = 0;
+  tb->vcpu->clock = 0;
   while (1) {
     if (tb->max_cycles && tb->cycles >= tb->max_cycles) break;
     if (tb->contextp->gotFinish()) break;
     cycle(tb);
   }
-  tb->soc->reset = 0;
+  tb->vcpu->reset = 0;
 }
 
-void run_instructions(TestBench* tb) {
-  flash_init((uint8_t*)tb->insts, tb->file_size);
+void fetch_exec(TestBench* tb) {
+  tb->vcpu->clock = 0;
+  while (1) {
+    if (tb->max_cycles && tb->cycles >= tb->max_cycles) break;
+    if (tb->contextp->gotFinish()) break;
+    if (tb->vcpu->is_done_instruction) break;
+    cycle(tb);
+  }
+  tb->vcpu->reset = 0;
+}
+
+bool test_instructions(TestBench* tb) {
+  bool is_test_success = true;
+  tb->cycles = 0;
   reset(tb);
-  run(tb);
+  while (1) {
+    fetch_exec(tb);
+    if (tb->contextp->gotFinish()) {
+      printf("[INFO] vcpu ebreak\n");
+      if (tb->vcpu->regs[10] != 0) {
+        printf("[FAILED] test is not successful: returned %u\n", tb->vcpu->regs[10]);
+        is_test_success=false;
+      }
+    }
+    if (tb->max_cycles && tb->cycles >= tb->max_cycles) {
+      printf("[FAILED] test is not successful: timeout %u/%u\n", tb->cycles, tb->max_cycles);
+      is_test_success=false;
+      break;
+    }
+  }
+  printf("[INFO] finished:%u cycles\n", tb->cycles);
+  return is_test_success;
 }
 
-void run_bin(TestBench* tb) {
-  uint8_t* data = NULL; size_t size = 0;
-  int ok = read_bin_file(tb->bin_file, &data, &size);
-  if (!ok) return;
+bool test_bin(TestBench* tb) {
+  bool is_test_success = true;
+  return is_test_success;
+}
 
-  tb->file_size = size;
-  tb->n_insts = size/4;
-  tb->insts = (uint32_t*)data;
-
-  run_instructions(tb);
+bool test_random(TestBench* tb) {
+  bool is_tests_success = true;
+  return is_tests_success;
 }
 
 void simple_lw_sw_test(TestBench* tb) {
@@ -188,8 +222,9 @@ void simple_lw_sw_test(TestBench* tb) {
 static void usage(const char* prog) {
   fprintf(stderr,
     "Usage:\n"
-    "  %s [trace <path>] [cycles] [max <number>] bin <path>\n",
-    prog 
+    "  %s [diff] [trace <path>] [cycles] [max <cycles>] bin <path>\n"
+    "  %s [diff] [trace <path>] [cycles] [max <cycles>] random <tests> <n_insts>\n",
+    prog, prog
   );
 }
 
@@ -205,14 +240,19 @@ TestBench new_testbench(TestBenchConfig config) {
     .is_bin     = config.is_bin,
     .bin_file   = config.bin_file,
     .max_cycles = config.max_cycles,
+    .is_diff    = config.is_diff,
+    .is_random  = config.is_random,
+    .max_tests  = config.max_tests,
+    .n_insts    = config.n_insts,
   };
   tb.contextp = new VerilatedContext;
-  tb.soc = new SoC;
+  tb.vcpu  = new Vcpu;
+  tb.gcpu  = new Gcpu;
 
   if (tb.is_trace) {
     Verilated::traceEverOn(true);
     tb.trace = new VerilatedVcdC;
-    tb.soc->trace(tb.trace, 5);
+    tb.vcpu->trace(tb.trace, 5);
     tb.trace->open(tb.trace_file);
   }
   return tb;
@@ -226,7 +266,8 @@ void delete_testbench(TestBench tb) {
     tb.trace->close();
     delete tb.trace;
   }
-  delete tb.soc;
+  delete tb.vcpu;
+  delete tb.gcpu;
   delete tb.contextp;
 }
 
@@ -259,6 +300,9 @@ int main(int argc, char** argv, char** env) {
         config.trace_file = argv[curr_arg++];
         config.is_trace = true;
       }
+      else if (streq(mode, "diff")) {
+        config.is_diff = true;
+      }
       else if (streq(mode, "cycles")) {
         config.is_cycles = true;
       }
@@ -276,6 +320,23 @@ int main(int argc, char** argv, char** env) {
           goto exit_label;
         }
         config.max_cycles = atoi(argv[curr_arg++]);
+      }
+      else if (streq(mode, "random")) {
+        if (config.is_random) {
+          fprintf(stderr, "Error: second random is not supported\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto exit_label;
+        }
+        if (curr_arg+1 >= argc) {
+          fprintf(stderr, "Error: 'random' requires a <number> <number>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto exit_label;
+        }
+        config.is_random = true;
+        config.max_tests = atoi(argv[curr_arg++]);
+        config.n_insts   = atoi(argv[curr_arg++]);
       }
       else if (streq(mode, "bin")) {
         if (config.is_bin) {
@@ -302,7 +363,12 @@ int main(int argc, char** argv, char** env) {
     TestBench tb = new_testbench(config);
 
     if (tb.is_bin) {
-      run_bin(&tb);
+      bool result = test_bin(&tb);
+      if (!result) exit_code = EXIT_FAILURE;
+    }
+    else if (tb.is_random) {
+      bool result = test_random(&tb);
+      if (!result) exit_code = EXIT_FAILURE;
     }
     delete_testbench(tb);
   }

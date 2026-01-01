@@ -1,5 +1,45 @@
 #include "stdio.h"
 
+#define INITIAL_PC  (0x3000'0000)
+#define N_REGS      (16)
+#define OP_ADD  (0b0000)
+#define OP_SUB  (0b1000) 
+#define OP_SLL  (0b0001) 
+#define OP_SLT  (0b0010) 
+#define OP_SLTU (0b0011) 
+#define OP_XOR  (0b0100) 
+#define OP_SRL  (0b0101) 
+#define OP_SRA  (0b1101) 
+#define OP_OR   (0b0110) 
+#define OP_AND  (0b0111) 
+#define FUNCT3_SR   (0b101)
+
+#define INST_UNDEFINED (0b0000)
+#define INST_LOAD_BYTE (0b1000)
+#define INST_LOAD_HALF (0b1001)
+#define INST_LOAD_WORD (0b1010)
+#define INST_STORE     (0b1011)
+#define INST_IMM       (0b1100)
+#define INST_REG       (0b1101)
+#define INST_UPP       (0b1110)
+#define INST_JUMP      (0b1111)
+
+#define FUNCT3_BYTE         (0b000)
+#define FUNCT3_HALF         (0b001)
+#define FUNCT3_WORD         (0b010)
+#define FUNCT3_BYTE_UNSIGN  (0b100)
+#define FUNCT3_HALF_UNSIGN  (0b101)
+
+#define OPCODE_LUI          (0b0110111)
+#define OPCODE_AUIPC        (0b0010111)
+#define OPCODE_JAL          (0b1101111)
+#define OPCODE_JALR         (0b1100111)
+#define OPCODE_LOAD         (0b0000011)
+#define OPCODE_STORE        (0b0100011)
+#define OPCODE_CALC_IMM     (0b0010011)
+#define OPCODE_CALC_REG     (0b0110011)
+#define OPCODE_ENV          (0b1110011)
+
 #define ERROR_NOT_IMPLEMENTED (1010)
 #define ERROR_INVALID_RANGE   (2020)
 
@@ -131,7 +171,7 @@ uint32_t ebreak() {
   return inst_u32;
 }
 
-struct Dec_out {
+struct InstInfo {
   uint8_t reg_dest;
   uint8_t reg_src1;
   uint8_t reg_src2;
@@ -142,8 +182,8 @@ struct Dec_out {
   uint8_t reg_write_enable;
 };
 
-Dec_out dec_eval(uint32_t inst) {
-  Dec_out out = {};
+InstInfo dec_eval(uint32_t inst) {
+  InstInfo out = {};
   out.opcode = take_bits_range(inst, 0, 6);
   out.reg_dest = take_bits_range(inst, 7, 11);
   out.funct3 = take_bits_range(inst, 12, 14);
@@ -205,7 +245,7 @@ Dec_out dec_eval(uint32_t inst) {
 }
 
 void print_instruction(uint32_t inst) {
-  Dec_out dec = dec_eval(inst);
+  InstInfo dec = dec_eval(inst);
   switch (dec.opcode) {
     case OPCODE_ADDI: {
       if (dec.funct3 == FUNCT3_ADDI) { // ADDI
