@@ -326,6 +326,7 @@ bool test_instructions(TestBench* tb) {
 
 bool test_bin(TestBench* tb) {
   uint8_t* data = NULL; size_t size = 0;
+  printf("[INFO] read file %s\n", tb->bin_file);
   int ok = read_bin_file(tb->bin_file, &data, &size);
   if (!ok) return false;
 
@@ -338,6 +339,7 @@ bool test_bin(TestBench* tb) {
 
 bool test_random(TestBench* tb) {
   bool is_tests_success = true;
+  printf("[TODO] random tests are not implemented\n");
   return is_tests_success;
 }
 
@@ -510,6 +512,9 @@ int main(int argc, char** argv, char** env) {
     }
     TestBench tb = new_testbench(config);
 
+    if (tb.is_bin && tb.is_random) {
+      printf("[WARNING] bin test and random test together are not supported: doing only bin test\n");
+    }
     if (tb.is_bin) {
       bool result = test_bin(&tb);
       if (!result) exit_code = EXIT_FAILURE;
