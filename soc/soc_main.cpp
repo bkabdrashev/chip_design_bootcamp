@@ -1,8 +1,10 @@
 #include <verilated.h>
 #include <verilated_vcd_c.h>
 #include "VysyxSoCTop.h"
+// #include "Vcpu.h"
 
-typedef VysyxSoCTop CPU;
+typedef VysyxSoCTop SoC;
+// typedef Vcpu        CPU;
 
 #include <stdio.h>   // fopen, fseek, ftell, fread, fclose, fprintf
 #include <stdlib.h>  // malloc, free
@@ -79,12 +81,29 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
 
 extern "C" void flash_init(uint8_t* data, uint32_t size);
 
+struct TestBenchConfig {
+  bool is_trace  = false;
+  char* trace_file;
+  bool is_cycles = false;
+  bool is_bin    = false;
+  char* bin_file = NULL;
+  uint64_t max_cycles = 0;
+};
+
 struct TestBench {
+  bool is_trace;
+  char* trace_file;
+  bool is_cycles;
+  bool is_bin;
+  char* bin_file;
+  uint64_t max_cycles;
   VerilatedContext* contextp;
-  CPU* cpu;
+  // CPU cpu;
+  SoC* soc;
   VerilatedVcdC* trace;
   uint64_t cycles;
 
+  size_t    file_size;
   uint32_t  n_insts;
   uint32_t* insts;
 };
@@ -96,83 +115,199 @@ void print_all_instructions(TestBench* tb) {
   }
 }
 
-void cycle(TestBench* tb) {
-  tb->cpu->eval();
-  tb->trace->dump(tb->cycles++);
-  tb->cpu->clock ^= 1;
-
-  tb->cpu->eval();
-  tb->trace->dump(tb->cycles++);
-  tb->cpu->clock ^= 1;
+void tick(TestBench* tb) {
+  tb->soc->eval();
+  if (tb->is_trace) tb->trace->dump(tb->cycles);
+  tb->cycles++;
+  tb->soc->clock ^= 1;
 }
 
-int main(int argc, char** argv, char** env) {
-  TestBench* tb = new TestBench;
-  tb->contextp = new VerilatedContext;
-  tb->cpu = new CPU;
-  Verilated::traceEverOn(true);
-  tb->trace = new VerilatedVcdC;
-  tb->cpu->trace(tb->trace, 5);
-  tb->trace->open("waveform.vcd");
-  uint64_t counter = 0;
-  uint8_t* data = NULL;
-  size_t   size = 0;
-  // uint32_t insts[5] = {
-  //   lui(0x80000, REG_SP),     // 0
-  //   li(0x1234, REG_T0),         // 4
-  //   sw( 0x4, REG_T0, REG_SP), // 8
-  //   // li(0x34, REG_T1),         // C
-  //   // sw( 0x5, REG_T1, REG_SP), // 10
-  //   lw( 0x4, REG_SP, REG_T2), // 14
-  //   ebreak()
-  // };
-  // uint32_t insts[7] = {
-  //   lui(0x80000, REG_SP),     // 0
-  //   li(0x12, REG_T0),         // 4
-  //   sb( 0x4, REG_T0, REG_SP), // 8
-  //   li(0x34, REG_T1),         // C
-  //   sb( 0x5, REG_T1, REG_SP), // 10
-  //   lw( 0x4, REG_SP, REG_T2), // 14
-  //   ebreak()
-  // };
-  // tb->insts = insts;
-  // tb->n_insts = 5;
-  // print_all_instructions(tb);
-  // data = (uint8_t*)insts;
-  // size = tb->n_insts*4;
-  /*
-   0:	555550b7          	lui	x1,0x55555
-   4:	00108093          	addi	x1,x1,1 # 0x55555001
-   8:	80000137          	lui	x2,0x80000
-   c:	00410113          	addi	x2,x2,4 # 0x80000004
-  10:	00112023          	sw	x1,0(x2)
-  14:	00012183          	lw	x3,0(x2)
-  18:	00100073          	ebreak
-    */
-  // read_bin_file("./bin/code2.bin", &data, &size);
-  // read_bin_file("./bin/hello-minirv-ysyxsoc.bin", &data, &size);
-  // read_bin_file("./bin/dummy-minirv-ysyxsoc.bin", &data, &size);
-  read_bin_file("./bin/dummy-flash-ysyxsoc.bin", &data, &size);
-  flash_init(data, (uint32_t)size);
+void cycle(TestBench* tb) {
+  tick(tb);
+  tick(tb);
+}
 
-  uint64_t max_sim_time = 0;
-
-  tb->cpu->reset = 1;
-  tb->cpu->clock = 0;
+void reset(TestBench* tb) {
+  tb->soc->reset = 1;
+  tb->soc->clock = 0;
   for (uint64_t i = 0; i < 10; i++) {
     cycle(tb);
   }
-  tb->cpu->reset = 0;
+  tb->soc->reset = 0;
+}
 
-  printf("start\n");
-  for (uint64_t t = 0; !max_sim_time || t < max_sim_time; t++) {
-    cycle(tb);
+void run(TestBench* tb) {
+  tb->soc->clock = 0;
+  while (1) {
+    if (tb->max_cycles && tb->cycles >= tb->max_cycles) break;
     if (tb->contextp->gotFinish()) break;
+    cycle(tb);
   }
-  printf("finish\n");
+  tb->soc->reset = 0;
+}
 
-  tb->trace->close();
+void run_instructions(TestBench* tb) {
+  flash_init((uint8_t*)tb->insts, tb->file_size);
+  reset(tb);
+  run(tb);
+}
+
+void run_bin(TestBench* tb) {
+  uint8_t* data = NULL; size_t size = 0;
+  int ok = read_bin_file(tb->bin_file, &data, &size);
+  if (!ok) return;
+
+  tb->file_size = size;
+  tb->n_insts = size/4;
+  tb->insts = (uint32_t*)data;
+
+  run_instructions(tb);
+}
+
+void simple_lw_sw_test(TestBench* tb) {
+  uint32_t insts[7] = {
+    lui(0x80000, REG_SP),     // 0
+    li(0x12, REG_T0),         // 4
+    sw( 0x4, REG_T0, REG_SP), // 8
+    li(0x34, REG_T1),         // C
+    sw( 0x5, REG_T1, REG_SP), // 10
+    lw( 0x4, REG_SP, REG_T2), // 14
+    ebreak()
+  };
+
+  tb->n_insts = 7;
+  tb->insts = (uint32_t*)malloc(sizeof(uint32_t) * tb->n_insts);
+  for (uint32_t i = 0; i < tb->n_insts; i++) {
+    tb->insts[i] = insts[i];
+  }
+
+  reset(tb);
+  run(tb);
+}
+
+static void usage(const char* prog) {
+  fprintf(stderr,
+    "Usage:\n"
+    "  %s [trace <path>] [cycles] [max <number>] bin <path>\n",
+    prog, prog
+  );
+}
+
+static int streq(const char* a, const char* b) {
+  return a && b && strcmp(a, b) == 0;
+}
+
+TestBench new_testbench(TestBenchConfig config) {
+  TestBench tb = {
+    .is_trace   = config.is_trace,
+    .trace_file = config.trace_file,
+    .is_cycles  = config.is_cycles,
+    .is_bin     = config.is_bin,
+    .bin_file   = config.bin_file,
+    .max_cycles = config.max_cycles,
+  };
+  tb.contextp = (VerilatedContext*)malloc(sizeof(VerilatedContext));
+
+  tb.soc = (SoC*)malloc(sizeof(SoC));
+  if (tb.is_trace) {
+    Verilated::traceEverOn(true);
+    tb.trace = (VerilatedVcdC*)malloc(sizeof(VerilatedVcdC));
+    tb.soc->trace(tb.trace, 5);
+    tb.trace->open(tb.trace_file);
+  }
+  return tb;
+}
+
+void delete_testbench(TestBench tb) {
+  if (tb.n_insts) {
+    free(tb.insts);
+  }
+  if (tb.is_trace) {
+    tb.trace->close();
+    free(tb.trace);
+  }
+  free(tb.soc);
+  free(tb.contextp);
+}
+
+int main(int argc, char** argv, char** env) {
   int exit_code = EXIT_SUCCESS;
+
+  if (argc < 2) {
+    usage(argv[0]);
+    exit_code = EXIT_FAILURE;
+    goto cleanup;
+  }
+  else {
+    TestBenchConfig config = {};
+    int curr_arg = 1;
+    while (curr_arg < argc) {
+      char* mode = argv[curr_arg++];
+      if (streq(mode, "trace")) {
+        if (config.is_trace) {
+          fprintf(stderr, "Error: second trace\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        if (curr_arg >= argc) {
+          fprintf(stderr, "Error: 'trace' requires a <path>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        config.trace_file = argv[curr_arg++];
+        config.is_trace = true;
+      }
+      else if (streq(mode, "cycles")) {
+        config.is_cycles = true;
+      }
+      else if (streq(mode, "max")) {
+        if (config.max_cycles) {
+          fprintf(stderr, "Error: second max cycles\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        if (curr_arg >= argc) {
+          fprintf(stderr, "Error: 'max' requires a <number>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        config.max_cycles = atoi(argv[curr_arg++]);
+      }
+      else if (streq(mode, "bin")) {
+        if (config.is_bin) {
+          fprintf(stderr, "Error: second bin is not supported\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        if (curr_arg >= argc) {
+          fprintf(stderr, "Error: 'bin' requires a <path>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto cleanup;
+        }
+        config.is_bin = true;
+        config.bin_file = argv[curr_arg++];
+      }
+      else {
+        fprintf(stderr, "Error: unknown mode '%s'\n", mode);
+        usage(argv[0]);
+        exit_code = EXIT_FAILURE;
+      }
+    }
+    TestBench tb = new_testbench(config);
+
+    if (tb.is_bin) {
+      run_bin(&tb);
+    }
+    delete_testbench(tb);
+  }
+  
+cleanup:
   return exit_code;
 }
 

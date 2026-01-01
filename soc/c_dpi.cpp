@@ -10,7 +10,6 @@ extern "C" void flash_read(int32_t addr, int32_t* data) {
  *data = 
       flash_mem[addr + 3] << 24 | flash_mem[addr + 2] << 16 |
       flash_mem[addr + 1] <<  8 | flash_mem[addr + 0] <<  0 ;
-;
 }
 
 extern "C" void flash_init(uint8_t* data, uint32_t size) {
