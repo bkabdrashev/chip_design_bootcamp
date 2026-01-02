@@ -94,7 +94,7 @@ module sm (
       STATE_LOAD: begin
         if (lsu_respValid && lsu_inflight) begin
           next = STATE_EXEC; reg_wen = 1;
-          if (lsu_addr == 'h1000_0005 && |lsu_rdata) $display("uart lsr: %b", lsu_rdata);
+          // if (lsu_addr == 'h1000_0005 && |lsu_rdata) $display("uart lsr: %b", lsu_rdata);
         end
         else begin
           next = STATE_LOAD;

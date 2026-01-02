@@ -120,6 +120,7 @@ void tick(TestBench* tb) {
   if (tb->is_trace) tb->trace->dump(tb->cycles);
   tb->cycles++;
   tb->soc->clock ^= 1;
+  if (tb->is_cycles && tb->cycles % 1'000'000 == 0) printf("[INFO] cycles: %lu\n", tb->cycles);
 }
 
 void cycle(TestBench* tb) {
@@ -128,6 +129,7 @@ void cycle(TestBench* tb) {
 }
 
 void reset(TestBench* tb) {
+  printf("[INFO] reset\n");
   tb->soc->reset = 1;
   tb->soc->clock = 0;
   for (uint64_t i = 0; i < 10; i++) {
@@ -139,7 +141,10 @@ void reset(TestBench* tb) {
 void run(TestBench* tb) {
   tb->soc->clock = 0;
   while (1) {
-    if (tb->max_cycles && tb->cycles >= tb->max_cycles) break;
+    if (tb->max_cycles && tb->cycles >= tb->max_cycles) {
+      printf("[FAILED]: timeout %u/%u\n", tb->cycles, tb->max_cycles);
+      break;
+    }
     if (tb->contextp->gotFinish()) break;
     cycle(tb);
   }
@@ -150,6 +155,7 @@ void run_instructions(TestBench* tb) {
   flash_init((uint8_t*)tb->insts, tb->file_size);
   reset(tb);
   run(tb);
+  printf("[INFO] finished:%u cycles\n", tb->cycles);
 }
 
 void run_bin(TestBench* tb) {
