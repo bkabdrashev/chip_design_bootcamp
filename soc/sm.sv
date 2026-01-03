@@ -2,9 +2,9 @@ module sm (
   input  logic clock,
   input  logic reset,
 
-  input  logic       ifu_respValid,
-  input  logic       lsu_respValid,
-  input  logic [3:0] inst_type,
+  input  logic                   ifu_respValid,
+  input  logic                   lsu_respValid,
+  input  logic [INST_TYPE_END:0] inst_type,
 
   output logic finished,
   output logic ebreak,
@@ -123,7 +123,7 @@ module sm (
       end
     endcase
 
-    if (inst_type == INST_EBREAK && next == STATE_EXEC) next_ebreak = 1;
+    next_ebreak = inst_type == INST_EBREAK && next == STATE_EXEC;
   end
 
 `ifdef verilator

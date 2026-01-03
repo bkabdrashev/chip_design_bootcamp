@@ -33,6 +33,7 @@ module cpu (
   logic [REG_END_WORD:0] pc_inc;
 
   logic [REG_END_WORD:0] alu_res;
+  logic [REG_END_WORD:0] alu_lhs;
   logic [REG_END_WORD:0] alu_rhs;
   logic [3:0]            alu_op;
 
@@ -48,7 +49,7 @@ module cpu (
   logic [REG_END_WORD-REG_END_BYTE-1:0] mem_byte_extend;
   logic [REG_END_WORD-REG_END_HALF-1:0] mem_half_extend;
 
-  logic [3:0]  inst_type;
+  logic [INST_TYPE_END:0]  inst_type;
 
   logic [N_REGS-1:0][REG_END_WORD:0] rf_regs;
   logic reg_wen;
@@ -59,6 +60,10 @@ module cpu (
   logic [31:0] lsu_rdata;
   logic [31:0] lsu_addr;
   logic [1:0]  lsu_size;
+
+  logic [31:0] csr_rdata;
+  logic [31:0] csr_wdata;
+  logic        csr_wen;
 
   pc u_pc(
     .clock(clock),
@@ -81,7 +86,7 @@ module cpu (
 
   alu u_alu(
     .op(alu_op),
-    .lhs(reg_rdata1),
+    .lhs(alu_lhs),
     .rhs(alu_rhs),
     .res(alu_res));
 
@@ -99,6 +104,14 @@ module cpu (
     .rdata1(reg_rdata1),
     .rdata2(reg_rdata2),
     .regs(rf_regs));
+
+  csr u_csr(
+    .clock(clock),
+    .reset(reset),
+    .wen(csr_wen),
+    .addr(imm[11:0]),
+    .wdata(csr_wdata),
+    .rdata(csr_rdata));
 
   sm u_sm(
     .clock(clock),
@@ -121,6 +134,14 @@ module cpu (
     pc_inc = pc + 4;
 
     case (inst_type)
+      INST_CSRRC:  alu_lhs = ~reg_rdata1;
+      INST_CSRRWI: alu_lhs = {27'b0,  rs1};
+      INST_CSRRSI: alu_lhs = {27'b0,  rs1};
+      INST_CSRRCI: alu_lhs = {27'b1, ~rs1};
+      default:     alu_lhs = reg_rdata1;
+    endcase
+
+    case (inst_type)
       INST_REG:        alu_rhs = reg_rdata2;        
       INST_LOAD_BYTE:  alu_rhs = imm;
       INST_LOAD_HALF:  alu_rhs = imm;
@@ -131,7 +152,25 @@ module cpu (
       INST_JUMP:       alu_rhs = imm;         
       INST_IMM:        alu_rhs = imm;        
       INST_UPP:        alu_rhs = 0;        
+
+      INST_CSRRW:      alu_rhs = 0;
+      INST_CSRRS:      alu_rhs = csr_rdata;
+      INST_CSRRC:      alu_rhs = csr_rdata;
+      INST_CSRRWI:     alu_rhs = 0;
+      INST_CSRRSI:     alu_rhs = csr_rdata;
+      INST_CSRRCI:     alu_rhs = csr_rdata;
+
       default:         alu_rhs = 0;
+    endcase
+
+    case (inst_type)
+      INST_CSRRW:      csr_wen = 1;
+      INST_CSRRS:      csr_wen = 1;
+      INST_CSRRC:      csr_wen = 1;
+      INST_CSRRWI:     csr_wen = 1;
+      INST_CSRRSI:     csr_wen = 1;
+      INST_CSRRCI:     csr_wen = 1;
+      default:         csr_wen = 0;
     endcase
 
     byte2 = reg_rdata2[7:0];
@@ -142,6 +181,8 @@ module cpu (
     lsu_rdata = 0;
     lsu_wmask = 0;
     lsu_addr = alu_res;
+
+    csr_wdata = alu_res;
 
     case (inst_type)
       INST_STORE_BYTE: begin
@@ -210,6 +251,14 @@ module cpu (
       INST_JUMP:      reg_wdata = pc_inc;         
       INST_REG:       reg_wdata = alu_res;        
       INST_IMM:       reg_wdata = alu_res;        
+
+      INST_CSRRW:     reg_wdata = csr_rdata;
+      INST_CSRRS:     reg_wdata = csr_rdata;
+      INST_CSRRC:     reg_wdata = csr_rdata;
+      INST_CSRRWI:    reg_wdata = csr_rdata;
+      INST_CSRRSI:    reg_wdata = csr_rdata;
+      INST_CSRRCI:    reg_wdata = csr_rdata;
+
       default:        reg_wdata = 0;
     endcase
 

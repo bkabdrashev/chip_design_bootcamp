@@ -20,19 +20,19 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
 
   FILE* f = fopen(path, "rb");
   if (!f) {
-    fprintf(stderr, "Error: Could not open %s\n", path);
+    fprintf(stderr, "[ERROR]: Could not open %s\n", path);
     return 0;
   }
 
   if (fseek(f, 0, SEEK_END) != 0) {
-    fprintf(stderr, "Error: Could not seek to end of file.\n");
+    fprintf(stderr, "[ERROR]: Could not seek to end of file.\n");
     fclose(f);
     return 0;
   }
 
   long len = ftell(f);
   if (len < 0) { // ftell failure
-    fprintf(stderr, "Error: Could not determine file size.\n");
+    fprintf(stderr, "[ERROR]: Could not determine file size.\n");
     fclose(f);
     return 0;
   }
@@ -44,13 +44,13 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
 
   // Ensure it fits into size_t
   if ((unsigned long long)len > (unsigned long long)SIZE_MAX) {
-    fprintf(stderr, "Error: File too large to allocate.\n");
+    fprintf(stderr, "[ERROR]: File too large to allocate.\n");
     fclose(f);
     return 0;
   }
 
   if (fseek(f, 0, SEEK_SET) != 0) {
-    fprintf(stderr, "Error: Could not seek to start of file.\n");
+    fprintf(stderr, "[ERROR]: Could not seek to start of file.\n");
     fclose(f);
     return 0;
   }
@@ -58,7 +58,7 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
   size_t size = (size_t)len;
   uint8_t* buf = (uint8_t*)malloc(size);
   if (!buf) {
-    fprintf(stderr, "Error: Out of memory.\n");
+    fprintf(stderr, "[ERROR]: Out of memory.\n");
     fclose(f);
     return 0;
   }
@@ -67,7 +67,7 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
   fclose(f);
 
   if (read != size) {
-    fprintf(stderr, "Error: Could not read file.\n");
+    fprintf(stderr, "[ERROR]: Could not read file.\n");
     free(buf);
     return 0;
   }
@@ -157,16 +157,6 @@ void v_reset(TestBench* tb) {
   tb->vuart[5] = 0b0010'0000;
 }
 
-void run(TestBench* tb) {
-  tb->vcpu->clock = 0;
-  while (1) {
-    if (tb->max_cycles && tb->cycles >= tb->max_cycles) break;
-    if (tb->contextp->gotFinish()) break;
-    cycle(tb);
-  }
-  tb->vcpu->reset = 0;
-}
-
 uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
   uint32_t result = 0;
   if (addr >= FLASH_START && addr < FLASH_END-3) {
@@ -176,7 +166,7 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
       tb->vflash[addr+3] << 24 | tb->vflash[addr+2] << 16 |
       tb->vflash[addr+1] <<  8 | tb->vflash[addr+0] <<  0 ;
   }
-  if (addr >= UART_START && addr < UART_END-3) {
+  else if (addr >= UART_START && addr < UART_END-3) {
     addr -= UART_START;
     uint8_t byte = 0;
     byte = tb->vuart[addr];
@@ -192,7 +182,7 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
       tb->vmem[addr+1] <<  8 | tb->vmem[addr+0] <<  0 ;
   }
   else {
-    // printf("GM WARNING: mem read memory is not mapped\n");
+    printf("[WARNING]: mem read memory is not mapped\n");
   }
   return result;
 }
@@ -200,11 +190,8 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
 void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t wdata) {
   if (wen) {
     if (addr >= FLASH_START && addr < FLASH_END-3) {
-      // addr -= FLASH_START;
-      // if (wbmask & 0b0001) cpu->flash[addr + 0] = (wdata & (0xff <<  0)) >> 0;
-      // if (wbmask & 0b0010) cpu->flash[addr + 1] = (wdata & (0xff <<  8)) >> 8;
-      // if (wbmask & 0b0100) cpu->flash[addr + 2] = (wdata & (0xff << 16)) >> 16;
-      // if (wbmask & 0b1000) cpu->flash[addr + 3] = (wdata & (0xff << 24)) >> 24;
+      // NOTE: flash is read only
+      printf("[WARNING]: attempt at writing flash, which is read only\n");
     }
     else if (addr >= UART_START && addr < UART_END-3) {
       addr -= UART_START;
@@ -222,6 +209,12 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
         tb->vuart[addr] = byte;
       }
     }
+    else if (addr == TIME_START) {
+      // printf("try read uart: %p, %u\n", address, result);
+      uint64_t time_us = get_time_us();
+      result = (time_us & 0xffffffff);
+      // printf("time low:%u\n", result);
+    }
     else if (addr >= MEM_START && addr < MEM_END-3) {
       addr &= ~3;
       addr -= MEM_START;
@@ -230,11 +223,8 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
       if (wbmask & 0b0100) tb->vmem[addr + 2] = (wdata >> 16) & 0xff;
       if (wbmask & 0b1000) tb->vmem[addr + 3] = (wdata >> 24) & 0xff;
     }
-    // else if (addr.v == UART_DATA_ADDR) {
-    //   putc(write_data.v & 0xff, stderr);
-    // }
     else {
-      // printf("GM WARNING: mem write memory is not mapped\n");
+      printf("[WARNING]: mem write memory is not mapped\n");
     }
   }
 }
@@ -472,13 +462,13 @@ int main(int argc, char** argv, char** env) {
       char* mode = argv[curr_arg++];
       if (streq(mode, "trace")) {
         if (config.is_trace) {
-          fprintf(stderr, "Error: second trace\n");
+          fprintf(stderr, "[ERROR]: second trace\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
         }
         if (curr_arg >= argc) {
-          fprintf(stderr, "Error: 'trace' requires a <path>\n");
+          fprintf(stderr, "[ERROR]: 'trace' requires a <path>\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
@@ -494,13 +484,13 @@ int main(int argc, char** argv, char** env) {
       }
       else if (streq(mode, "max")) {
         if (config.max_cycles) {
-          fprintf(stderr, "Error: second max cycles\n");
+          fprintf(stderr, "[ERROR]: second max cycles\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
         }
         if (curr_arg >= argc) {
-          fprintf(stderr, "Error: 'max' requires a <number>\n");
+          fprintf(stderr, "[ERROR]: 'max' requires a <number>\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
@@ -509,13 +499,13 @@ int main(int argc, char** argv, char** env) {
       }
       else if (streq(mode, "random")) {
         if (config.is_random) {
-          fprintf(stderr, "Error: second random is not supported\n");
+          fprintf(stderr, "[ERROR]: second random is not supported\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
         }
         if (curr_arg+1 >= argc) {
-          fprintf(stderr, "Error: 'random' requires a <number> <number>\n");
+          fprintf(stderr, "[ERROR]: 'random' requires a <number> <number>\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
@@ -526,13 +516,13 @@ int main(int argc, char** argv, char** env) {
       }
       else if (streq(mode, "bin")) {
         if (config.is_bin) {
-          fprintf(stderr, "Error: second bin is not supported\n");
+          fprintf(stderr, "[ERROR]: second bin is not supported\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
         }
         if (curr_arg >= argc) {
-          fprintf(stderr, "Error: 'bin' requires a <path>\n");
+          fprintf(stderr, "[ERROR]: 'bin' requires a <path>\n");
           usage(argv[0]);
           exit_code = EXIT_FAILURE;
           goto exit_label;
@@ -541,7 +531,7 @@ int main(int argc, char** argv, char** env) {
         config.bin_file = argv[curr_arg++];
       }
       else {
-        fprintf(stderr, "Error: unknown mode '%s'\n", mode);
+        fprintf(stderr, "[ERROR]: unknown mode '%s'\n", mode);
         usage(argv[0]);
         exit_code = EXIT_FAILURE;
       }

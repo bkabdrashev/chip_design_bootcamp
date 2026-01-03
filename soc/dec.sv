@@ -6,10 +6,10 @@ module dec (
   output logic [REG_END_ID:0] rs1,
   output logic [REG_END_ID:0] rs2,
 
-  output logic [REG_END_WORD:0] imm,
-  output logic [3:0]            alu_op,
-  output logic                  is_mem_sign,
-  output logic [3:0]            inst_type);
+  output logic [REG_END_WORD:0]  imm,
+  output logic [3:0]             alu_op,
+  output logic                   is_mem_sign,
+  output logic [INST_TYPE_END:0] inst_type);
 /* verilator lint_off UNUSEDPARAM */
   `include "./soc/defs.vh"
 /* verilator lint_on UNUSEDPARAM */
@@ -20,9 +20,9 @@ module dec (
   logic [6:0] opcode;
   logic [2:0] funct3;
 
-  logic [REG_END_WORD:0]   i_imm; 
-  logic [REG_END_WORD:0]   u_imm; 
-  logic [REG_END_WORD:0]   s_imm; 
+  logic [REG_END_WORD:0] i_imm; 
+  logic [REG_END_WORD:0] u_imm; 
+  logic [REG_END_WORD:0] s_imm; 
 
   always_comb begin
     opcode = inst[6:0];
@@ -52,11 +52,11 @@ module dec (
       end
       OPCODE_LOAD: begin
         imm = i_imm;
-        inst_type = {2'b10,funct3[1:0]};
+        inst_type = {3'b010,funct3[1:0]};
       end
       OPCODE_STORE: begin
         imm = s_imm;
-        inst_type = {2'b01,funct3[1:0]};
+        inst_type = {3'b011,funct3[1:0]};
       end
       OPCODE_LUI: begin
         imm = u_imm;
@@ -66,12 +66,13 @@ module dec (
         imm = i_imm;
         inst_type = INST_JUMP;
       end
-      OPCODE_ENV: begin
-        if (inst[20]) begin
-          $finish();
-          inst_type = INST_EBREAK;
-        end
-        else inst_type = 0;
+      OPCODE_SYSTEM: begin
+      // WRITE a = b << 0 
+      // SET   a = b | c
+      // CLEAR a = b & ~c
+        imm       = i_imm;
+        alu_op    = {2'b00, funct3[1:0]};
+        inst_type = {2'b10, funct3};
       end
       default: inst_type = 0;
     endcase

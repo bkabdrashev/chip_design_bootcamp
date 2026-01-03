@@ -1,6 +1,7 @@
 #include <verilated.h>
 #include <verilated_vcd_c.h>
 #include "VysyxSoCTop.h"
+#include "VysyxSoCTop___024root.h"
 // #include "Vcpu.h"
 
 typedef VysyxSoCTop SoC;
@@ -98,7 +99,6 @@ struct TestBench {
   char* bin_file;
   uint64_t max_cycles;
   VerilatedContext* contextp;
-  // CPU cpu;
   SoC* soc;
   VerilatedVcdC* trace;
   uint64_t cycles;
@@ -138,57 +138,45 @@ void reset(TestBench* tb) {
   tb->soc->reset = 0;
 }
 
-void run(TestBench* tb) {
+bool run(TestBench* tb) {
+  bool run_result = false;
   tb->soc->clock = 0;
   while (1) {
     if (tb->max_cycles && tb->cycles >= tb->max_cycles) {
       printf("[FAILED]: timeout %u/%u\n", tb->cycles, tb->max_cycles);
       break;
     }
-    if (tb->contextp->gotFinish()) break;
+    uint8_t ebreak = tb->soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__cpu__DOT__u_cpu__DOT__ebreak;
+    if (ebreak) {
+      printf("[INFO] vcpu ebreak\n");
+      uint32_t x10 = tb->soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__cpu__DOT__u_cpu__DOT__regs[10];
+      run_result = x10 == 0;
+      break;
+    }
     cycle(tb);
   }
   tb->soc->reset = 0;
+  return run_result;
 }
 
-void run_instructions(TestBench* tb) {
+bool run_instructions(TestBench* tb) {
   flash_init((uint8_t*)tb->insts, tb->file_size);
   reset(tb);
-  run(tb);
+  bool run_result = run(tb);
   printf("[INFO] finished:%u cycles\n", tb->cycles);
+  return run_result;
 }
 
-void run_bin(TestBench* tb) {
+bool run_bin(TestBench* tb) {
   uint8_t* data = NULL; size_t size = 0;
   int ok = read_bin_file(tb->bin_file, &data, &size);
-  if (!ok) return;
+  if (!ok) return false;
 
   tb->file_size = size;
   tb->n_insts = size/4;
   tb->insts = (uint32_t*)data;
 
-  run_instructions(tb);
-}
-
-void simple_lw_sw_test(TestBench* tb) {
-  uint32_t insts[7] = {
-    lui(0x80000, REG_SP),     // 0
-    li(0x12, REG_T0),         // 4
-    sw( 0x4, REG_T0, REG_SP), // 8
-    li(0x34, REG_T1),         // C
-    sw( 0x5, REG_T1, REG_SP), // 10
-    lw( 0x4, REG_SP, REG_T2), // 14
-    ebreak()
-  };
-
-  tb->n_insts = 7;
-  tb->insts = (uint32_t*)malloc(sizeof(uint32_t) * tb->n_insts);
-  for (uint32_t i = 0; i < tb->n_insts; i++) {
-    tb->insts[i] = insts[i];
-  }
-
-  reset(tb);
-  run(tb);
+  return run_instructions(tb);
 }
 
 static void usage(const char* prog) {
@@ -312,7 +300,8 @@ int main(int argc, char** argv, char** env) {
     TestBench tb = new_testbench(config);
 
     if (tb.is_bin) {
-      run_bin(&tb);
+      bool result = run_bin(&tb);
+      if (!result) exit_code = EXIT_FAILURE;
     }
     delete_testbench(tb);
   }
