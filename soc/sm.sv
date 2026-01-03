@@ -98,6 +98,7 @@ module sm (
         if (lsu_respValid && lsu_inflight) begin
           next = STATE_EXEC;
           reg_wen = 1;
+          pc_wen = 1;
         end
         else begin
           next = STATE_LOAD;

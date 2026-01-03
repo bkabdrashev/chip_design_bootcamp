@@ -278,7 +278,7 @@ module cpu (
       default:        reg_wdata = 0;
     endcase
 
-    is_pc_jump = inst_type == INST_JUMP || (inst_type == INST_BRANCH && com_res);
+    is_pc_jump = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
     if (pc_wen) begin
        if (is_pc_jump) pc_next = alu_res;
        else pc_next = pc_inc;
