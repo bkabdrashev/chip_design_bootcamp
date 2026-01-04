@@ -3,7 +3,32 @@
 #include "c_dpi.h"
 #include "mem_map.h"
 
-struct TestBench;
+struct Vuart {
+  uint8_t&  ier;
+  uint8_t&  iir;
+  uint8_t&  fcr;
+  uint8_t&  mcr;
+  uint8_t&  msr;
+  uint8_t&  lcr;
+  uint8_t&  lsr0;
+  uint8_t&  lsr1;
+  uint8_t&  lsr2;
+  uint8_t&  lsr3;
+  uint8_t&  lsr4;
+  uint8_t&  lsr5;
+  uint8_t&  lsr6;
+  uint8_t&  lsr7;
+};
+
+struct Vcpu {
+  uint8_t&  ebreak;
+  uint32_t& pc;
+  uint8_t&  is_done_instruction;
+  VlUnpacked<uint32_t, 16>&  regs;
+  VlUnpacked<uint16_t, 16777216>& mem;
+  Vuart uart;
+};
+
 struct Gcpu {
   uint32_t pc = INITIAL_PC;
   uint32_t regs[N_REGS];
@@ -13,7 +38,7 @@ struct Gcpu {
 
   uint8_t ebreak;
 
-  TestBench*  tb;
+  Vuart*  vuart;
 };
 
 void g_reset(Gcpu* cpu) {
@@ -54,7 +79,6 @@ void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t
   }
 }
 
-// uint32_t v_mem_read(TestBench* tb, uint32_t addr);
 uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
   uint32_t result = 0;
   if (addr >= FLASH_START && addr < FLASH_END-3) {
@@ -64,7 +88,28 @@ uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
       cpu->flash[addr+1] <<  8 | cpu->flash[addr+0] <<  0 ;
   }
   else if (addr >= UART_START && addr < UART_END-3) {
-    // result = v_mem_read(cpu->tb, addr);
+    addr -= UART_START;
+    uint8_t byte = 0;
+    switch (addr) {
+      case 1 : byte = cpu->vuart->ier; break;
+      case 2 : byte = cpu->vuart->iir; break;
+      case 3 : byte = cpu->vuart->lcr; break;
+      case 5 : {
+        byte =
+          (cpu->vuart->lsr0 << 0) |
+          (cpu->vuart->lsr1 << 1) |
+          (cpu->vuart->lsr2 << 2) |
+          (cpu->vuart->lsr3 << 3) |
+          (cpu->vuart->lsr4 << 4) |
+          (cpu->vuart->lsr5 << 5) |
+          (cpu->vuart->lsr6 << 6) |
+          (cpu->vuart->lsr7 << 7) ;
+      } break;
+      case 6 : byte = cpu->vuart->msr; break;
+    }
+    result = 
+      byte << 24 | byte << 16 |
+      byte <<  8 | byte <<  0 ;
   }
   else if (addr >= MEM_START && addr < MEM_END-3) {
     addr -= MEM_START;

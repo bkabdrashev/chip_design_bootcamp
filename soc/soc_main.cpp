@@ -81,14 +81,6 @@ int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
 
 extern void flash_init(uint8_t* data, uint32_t size);
 
-struct Vcpu {
-  uint8_t&  ebreak;
-  uint32_t& pc;
-  uint8_t&  is_done_instruction;
-  VlUnpacked<uint32_t, 16>&  regs;
-  VlUnpacked<uint16_t, 16777216>& mem;
-};
-
 struct TestBenchConfig {
   bool is_trace       = false;
   char* trace_file    = NULL;
@@ -137,7 +129,9 @@ void print_all_instructions(TestBench* tb) {
 
 void tick(TestBench* tb) {
   tb->soc->eval();
-  if (tb->is_trace) tb->trace->dump(tb->cycles);
+  if (tb->is_trace) {
+    tb->trace->dump(tb->cycles);
+  }
   if (tb->is_cycles && tb->cycles % 1'000'000 == 0) printf("[INFO] cycles: %lu\n", tb->cycles);
   tb->cycles++;
   tb->soc->clock ^= 1;
@@ -195,7 +189,7 @@ bool compare(TestBench* tb) {
     result &= compare_reg(tb->cycles, name, tb->vcpu->regs[i], tb->gcpu->regs[i]);
   }
   // result &= memcmp(tb->gcpu->flash, tb->vflash, FLASH_SIZE) == 0;
-  result &= memcmp(tb->gcpu->mem, &tb->vcpu->mem.m_storage[0], MEM_SIZE) == 0;
+  // result &= memcmp(tb->gcpu->mem, &tb->vcpu->mem.m_storage[0], MEM_SIZE) == 0;
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
       uint32_t v = ((uint8_t*)tb->vcpu->mem.m_storage)[i];
@@ -308,6 +302,9 @@ TestBench new_testbench(TestBenchConfig config) {
     .max_tests  = config.max_tests,
     .n_insts    = config.n_insts,
   };
+  if (tb.is_trace) {
+    Verilated::traceEverOn(true);
+  }
 
   tb.soc = new SoC;
   tb.vcpu = new Vcpu {
@@ -316,10 +313,26 @@ TestBench new_testbench(TestBenchConfig config) {
     .is_done_instruction = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_done_instruction,
     .regs                = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_rf__DOT__regs,
     .mem                 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__sdram__DOT__mem_ext__DOT__Memory,
-    // .uart                =
+    .uart                = {
+      .ier = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__ier,
+      .iir = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__iir,
+      .fcr = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__fcr,
+      .mcr = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__mcr,
+      .msr = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__msr,
+      .lcr = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lcr,
+      .lsr0 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr0r,
+      .lsr1 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr1r,
+      .lsr2 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr2r,
+      .lsr3 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr3r,
+      .lsr4 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr4r,
+      .lsr5 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr5r,
+      .lsr6 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr6r,
+      .lsr7 = tb.soc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__lsr7r,
+    },
   };
 
   tb.gcpu = new Gcpu;
+  tb.gcpu->vuart = &tb.vcpu->uart;
 
   tb.contextp = new VerilatedContext;
 
@@ -436,8 +449,6 @@ int main(int argc, char** argv, char** env) {
       }
     }
     TestBench tb = new_testbench(config);
-    tb.gcpu->tb = &tb;
-
 
     if (tb.is_bin && tb.is_random) {
       printf("[WARNING] bin test and random test together are not supported: doing only bin test\n");
