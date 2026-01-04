@@ -61,7 +61,7 @@ void g_flash_init(Gcpu* cpu, uint8_t* data, uint32_t size) {
 void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t wdata) {
   if (wen) {
     if (addr >= FLASH_START && addr < FLASH_END-3) {
-      // printf("[WARNING]: flash write memory\n");
+      printf("[WARNING]: gcpu flash write memory 0x%x\n", addr);
     }
     else if (addr >= MEM_START && addr < MEM_END-3) {
       addr -= MEM_START;
@@ -70,11 +70,8 @@ void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t
       if (wbmask & 0b0100) cpu->mem[addr + 2] = (wdata >> 16) & 0xff;
       if (wbmask & 0b1000) cpu->mem[addr + 3] = (wdata >> 24) & 0xff;
     }
-    // else if (addr.v == UART_DATA_ADDR) {
-    //   putc(write_data.v & 0xff, stderr);
-    // }
     else {
-      // printf("[WARNING]: mem write memory is not mapped\n");
+      printf("[WARNING]: gcpu mem write memory is not mapped 0x%x\n", addr);
     }
   }
 }
@@ -118,7 +115,7 @@ uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
       cpu->mem[addr+1] <<  8 | cpu->mem[addr+0] <<  0 ;
   }
   else {
-    // printf("GM WARNING: mem read memory is not mapped\n");
+    printf("[WARNING]: gcpu mem read  memory is not mapped 0x%x\n", addr);
   }
   return result;
 }
