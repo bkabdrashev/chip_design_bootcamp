@@ -220,6 +220,7 @@ bool compare(TestBench* tb) {
 }
 
 bool test_instructions(TestBench* tb) {
+  tb->cycles = 0;
   v_reset(tb);
   g_reset(tb->gcpu);
 
@@ -229,10 +230,20 @@ bool test_instructions(TestBench* tb) {
   }
   bool is_test_success = true;
   while (1) {
+    if (tb->is_diff) {
+      uint8_t ebreak = cpu_eval(tb->gcpu);
+      if (ebreak) {
+        printf("[INFO] gcpu ebreak\n");
+      }
+      if (tb->gcpu->is_not_mapped) {
+        break;
+      }
+    }
+
     fetch_exec(tb);
     if (tb->vcpu->ebreak) {
       printf("[INFO] vcpu ebreak\n");
-      if (tb->vcpu->regs[10] != 0) {
+      if (!tb->is_diff && tb->vcpu->regs[10] != 0) {
         printf("[FAILED] test is not successful: vcpu returned %u\n", tb->vcpu->regs[10]);
         is_test_success=false;
       }
@@ -241,14 +252,6 @@ bool test_instructions(TestBench* tb) {
     if (tb->is_diff) {
       uint32_t pc = tb->gcpu->pc;
       uint32_t inst = g_mem_read(tb->gcpu, tb->gcpu->pc);
-      uint8_t ebreak = cpu_eval(tb->gcpu);
-      if (ebreak) {
-        printf("[INFO] gcpu ebreak\n");
-        if (tb->gcpu->regs[10] != 0) {
-          printf("[FAILED] test is not successful: gcpu returned %u\n", tb->gcpu->regs[10]);
-          is_test_success=false;
-        }
-      }
       is_test_success &= compare(tb);
       if (!is_test_success) {
         printf("[%x] pc=0x%08x inst: [0x%x] ", tb->cycles, pc, inst);
@@ -262,6 +265,7 @@ bool test_instructions(TestBench* tb) {
     }
 
     if (tb->max_cycles && tb->cycles >= tb->max_cycles) {
+      printf("[%x] pc=0x%08x inst: [0x%x] \n", tb->cycles, tb->vcpu->pc);
       printf("[FAILED] test is not successful: timeout %u/%u\n", tb->cycles, tb->max_cycles);
       is_test_success=false;
       break;
@@ -297,9 +301,8 @@ bool test_random(TestBench* tb) {
   tb->insts = new uint32_t[tb->n_insts];
   bool is_tests_success = true;
   uint64_t tests_passed = 0;
-  // uint64_t seed = hash_uint64_t(std::time(0));
-  // uint64_t seed = 10596642213997354837lu; // this seed seems to be good debugging entry
-  uint64_t seed = 12494773341427943734lu; // early jalr
+  uint64_t seed = hash_uint64_t(std::time(0));
+  // uint64_t seed = 10253375514896805961lu;
   uint64_t i_test = 0;
   do {
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);

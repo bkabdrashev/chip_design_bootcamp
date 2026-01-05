@@ -16,7 +16,7 @@ module csr (
 
   // extensions:             MXL    ZY XWVUTSRQ PONMLKJI HGFEDCBA
   localparam MISA      = 32'b01_000000_00000000_00000000_00010000;
-  localparam MVENDORID = 32'h616b6562; // beka
+  localparam MVENDORID = "beka";
   localparam MARCHID   = 32'h05318008; 
 
   logic [63:0] mcycle;

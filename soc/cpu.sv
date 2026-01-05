@@ -293,6 +293,41 @@ module cpu (
   assign io_lsu_wmask = lsu_wmask;
   assign io_ifu_addr  = pc;
 
+`ifdef verilator
+reg [119:0] dbg_inst_type;
+
+always @ *
+begin
+    case (inst_type)
+      INST_EBREAK     : dbg_inst_type = "INST_EBREAK";
+      INST_CSRRW      : dbg_inst_type = "INST_CSRRW";
+      INST_CSRRS      : dbg_inst_type = "INST_CSRRS";
+      INST_CSRRC      : dbg_inst_type = "INST_CSRRC";
+      INST_CSRRWI     : dbg_inst_type = "INST_CSRRWI";
+      INST_CSRRSI     : dbg_inst_type = "INST_CSRRSI";
+      INST_CSRRCI     : dbg_inst_type = "INST_CSRRCI";
+
+      INST_LOAD_BYTE  : dbg_inst_type = "INST_LOAD_BYTE";
+      INST_LOAD_HALF  : dbg_inst_type = "INST_LOAD_HALF";
+      INST_LOAD_WORD  : dbg_inst_type = "INST_LOAD_WORD";
+      INST_STORE_BYTE : dbg_inst_type = "INST_STORE_BYTE";
+      INST_STORE_HALF : dbg_inst_type = "INST_STORE_HALF";
+      INST_STORE_WORD : dbg_inst_type = "INST_STORE_WORD";
+
+      INST_BRANCH     : dbg_inst_type = "INST_BRANCH";
+      INST_IMM        : dbg_inst_type = "INST_IMM";
+      INST_REG        : dbg_inst_type = "INST_REG";
+      INST_UPP        : dbg_inst_type = "INST_UPP";
+      INST_JUMP       : dbg_inst_type = "INST_JUMP";
+      INST_JUMPR      : dbg_inst_type = "INST_JUMPR";
+      INST_AUIPC      : dbg_inst_type = "INST_AUIPC";
+      default         : dbg_inst_type = "INST_UNDEFINED";
+    endcase
+end
+`endif
+
+
+
 endmodule
 
 

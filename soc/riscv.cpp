@@ -352,7 +352,7 @@ void print_instruction(uint32_t inst) {
         case FUNCT3_BLTU:  printf("bltu");  break;
         case FUNCT3_BGEU:  printf("bgeu");  break;
       }
-      printf("  imm=%5i rs2=%2u rs1=%2u rd=%2u\n", info.b_imm, info.reg_src2, info.reg_src1, info.reg_dest);
+      printf("  imm=%5i rs2=%2u rs1=%2u\n", info.b_imm, info.reg_src2, info.reg_src1);
     } break;
     case OPCODE_LOAD: {
       switch (info.funct3) {

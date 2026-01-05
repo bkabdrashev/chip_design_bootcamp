@@ -78,6 +78,7 @@ struct Gcpu {
   uint8_t flash[FLASH_SIZE];
 
   uint8_t ebreak;
+  bool    is_not_mapped;
 
   Vuart*  vuart;
 };
@@ -90,6 +91,7 @@ void g_reset(Gcpu* cpu) {
   for (uint32_t i = 0; i < N_REGS; i++) {
     cpu->regs[i] = 0;
   }
+  cpu->is_not_mapped = 0;
 }
 
 void g_flash_init(Gcpu* cpu, uint8_t* data, uint32_t size) {
@@ -112,6 +114,7 @@ void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t
       if (wbmask & 0b1000) cpu->mem[addr + 3] = (wdata >> 24) & 0xff;
     }
     else {
+      cpu->is_not_mapped = true;
       printf("[WARNING]: gcpu mem write memory is not mapped 0x%x\n", addr);
     }
   }
@@ -156,6 +159,7 @@ uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
       cpu->mem[addr+1] <<  8 | cpu->mem[addr+0] <<  0 ;
   }
   else {
+    cpu->is_not_mapped = true;
     printf("[WARNING]: gcpu mem read  memory is not mapped 0x%x\n", addr);
   }
   return result;
