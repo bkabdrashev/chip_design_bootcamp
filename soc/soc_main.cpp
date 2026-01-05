@@ -124,7 +124,7 @@ struct TestBench {
   Vcpu* vcpu;
   Gcpu* gcpu;
 
-  size_t    file_size;
+  size_t    flash_size;
   uint32_t  n_insts;
   uint32_t* insts;
 };
@@ -226,9 +226,9 @@ bool test_instructions(TestBench* tb) {
   v_reset(tb);
   g_reset(tb->gcpu);
 
-  flash_init((uint8_t*)tb->insts, tb->file_size);
+  flash_init((uint8_t*)tb->insts, tb->flash_size);
   if (tb->is_diff) {
-    g_flash_init(tb->gcpu, (uint8_t*)tb->insts, tb->file_size);
+    g_flash_init(tb->gcpu, (uint8_t*)tb->insts, tb->flash_size);
   }
   bool is_test_success = true;
   while (1) {
@@ -295,7 +295,7 @@ bool test_bin(TestBench* tb) {
   int ok = read_bin_file(tb->bin_file, &data, &size);
   if (!ok) return false;
 
-  tb->file_size = size;
+  tb->flash_size = size;
   tb->n_insts = size/4;
   tb->insts = (uint32_t*)data;
 
@@ -303,12 +303,12 @@ bool test_bin(TestBench* tb) {
 }
 
 bool test_random(TestBench* tb) {
-  tb->file_size = tb->n_insts*4;
+  tb->flash_size = tb->n_insts*4;
   tb->insts = new uint32_t[tb->n_insts];
   bool is_tests_success = true;
   uint64_t tests_passed = 0;
-  // uint64_t seed = hash_uint64_t(std::time(0));
-  uint64_t seed = 11178771775999776808lu;
+  uint64_t seed = hash_uint64_t(std::time(0));
+  // uint64_t seed = 11178771775999776808lu;
   uint64_t i_test = 0;
   do {
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);
@@ -317,8 +317,8 @@ bool test_random(TestBench* tb) {
     gen.seed(seed);
     for (uint32_t i = 0; i < tb->n_insts; i++) {
       // uint32_t inst = random_instruction_mem_load_or_store(&gen);
-      // uint32_t inst = random_instruction(&gen);
-      uint32_t inst = random_instruction_no_jump(&gen);
+      uint32_t inst = random_instruction(&gen);
+      // uint32_t inst = random_instruction_no_jump(&gen);
       // uint32_t inst = random_instruction_no_mem_no_jump(&gen);
       tb->insts[i] = inst;
     }
