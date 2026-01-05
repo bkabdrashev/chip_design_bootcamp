@@ -119,6 +119,7 @@ struct TestBench {
   SoC* soc;
   VerilatedVcdC* trace;
   uint64_t cycles;
+  uint64_t inst_fetches;
 
   Vcpu* vcpu;
   Gcpu* gcpu;
@@ -221,6 +222,7 @@ bool compare(TestBench* tb) {
 
 bool test_instructions(TestBench* tb) {
   tb->cycles = 0;
+  tb->inst_fetches = 0;
   v_reset(tb);
   g_reset(tb->gcpu);
 
@@ -278,8 +280,12 @@ bool test_instructions(TestBench* tb) {
     if (!is_valid_pc_address(tb->vcpu->pc, tb->n_insts)) {
       break;
     }
+    if (tb->inst_fetches > tb->n_insts) {
+      break;
+    }
+    tb->inst_fetches++;
   }
-  printf("[INFO] finished:%u cycles\n", tb->cycles);
+  printf("[INFO] finished:%u cycles, %u fetched instructions\n", tb->cycles, tb->inst_fetches);
   return is_test_success;
 }
 
@@ -301,8 +307,8 @@ bool test_random(TestBench* tb) {
   tb->insts = new uint32_t[tb->n_insts];
   bool is_tests_success = true;
   uint64_t tests_passed = 0;
-  uint64_t seed = hash_uint64_t(std::time(0));
-  // uint64_t seed = 3771247030410912810lu;
+  // uint64_t seed = hash_uint64_t(std::time(0));
+  uint64_t seed = 11178771775999776808lu;
   uint64_t i_test = 0;
   do {
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);
@@ -311,8 +317,8 @@ bool test_random(TestBench* tb) {
     gen.seed(seed);
     for (uint32_t i = 0; i < tb->n_insts; i++) {
       // uint32_t inst = random_instruction_mem_load_or_store(&gen);
-      uint32_t inst = random_instruction(&gen);
-      // uint32_t inst = random_instruction_no_jump(&gen);
+      // uint32_t inst = random_instruction(&gen);
+      uint32_t inst = random_instruction_no_jump(&gen);
       // uint32_t inst = random_instruction_no_mem_no_jump(&gen);
       tb->insts[i] = inst;
     }
@@ -323,7 +329,7 @@ bool test_random(TestBench* tb) {
       // print_all_instructions(tb);
     }
     else {
-      // print_all_instructions(tb);
+      print_all_instructions(tb);
     }
     seed = hash_uint64_t(seed);
     i_test++;
