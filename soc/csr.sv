@@ -47,6 +47,8 @@ module csr (
       MVENDORID_ADDR: rdata = MVENDORID;
       MCYCLE_ADDR:    rdata = mcycle[31: 0];
       MCYCLEH_ADDR:   rdata = mcycle[63:32];
+      MINSTRET_ADDR:  rdata = minstret[31: 0];
+      MINSTRETH_ADDR: rdata = minstret[63:32];
       default:        rdata = 32'h0;
     endcase
   end
