@@ -119,6 +119,7 @@ module cpu (
     .reset(reset),
     .wen(csr_wen),
     .addr(imm[11:0]),
+    .is_done_inst(is_done_instruction),
     .wdata(csr_wdata),
     .rdata(csr_rdata));
 
