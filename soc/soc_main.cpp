@@ -196,7 +196,6 @@ void vsoc_tick(TestBench* tb) {
   if (tb->is_trace) {
     tb->trace->dump(tb->trace_dumps++);
   }
-  if (tb->is_cycles && tb->vsoc_cycles % 1'000'000 == 0) printf("[INFO] vsoc cycles: %lu\n", tb->vsoc_cycles);
   tb->vsoc_ticks++;
   tb->vsoc->clock ^= 1;
 }
@@ -204,6 +203,7 @@ void vsoc_tick(TestBench* tb) {
 void vsoc_cycle(TestBench* tb) {
   vsoc_tick(tb);
   vsoc_tick(tb);
+  if (tb->is_cycles && tb->vsoc_cycles % 1'000'000 == 0) printf("[INFO] vsoc cycles: %lu\n", tb->vsoc_cycles);
   tb->vsoc_cycles++;
 }
 
@@ -354,7 +354,6 @@ void vcpu_fetch_exec(TestBench* tb) {
         tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
       }
     }
-
   }
 }
 
@@ -608,7 +607,7 @@ bool test_random(TestBench* tb) {
   uint64_t tests_passed = 0;
   uint64_t seed = 0;
   if (tb->seed) {
-    seed = 13612659699927657461lu;
+    seed = tb->seed;
   }
   else {
     seed = hash_uint64_t(std::time(0));
@@ -626,10 +625,10 @@ bool test_random(TestBench* tb) {
       tb->insts[i] = inst;
     }
 
+    print_all_instructions(tb);
     is_tests_success &= test_instructions(tb);
     if (is_tests_success) {
       tests_passed++;
-      // print_all_instructions(tb);
     }
     else {
       print_all_instructions(tb);

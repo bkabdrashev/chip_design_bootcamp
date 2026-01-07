@@ -85,6 +85,7 @@ struct Gcpu {
 };
 
 void g_reset(Gcpu* cpu) {
+  printf("[INFO] gold reset\n");
   memset(cpu->mem, 0, MEM_SIZE);
   memset(cpu->flash, 0, FLASH_SIZE);
   cpu->pc = INITIAL_PC;
