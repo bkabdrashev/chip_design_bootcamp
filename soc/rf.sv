@@ -1,33 +1,33 @@
 module rf (
-  input logic                   clock,
-  input logic                   reset,
-  input logic                   wen,
-  input logic  [REG_END_ID:0]   rd,
-  input logic  [REG_END_ID:0]   rs1,
-  input logic  [REG_END_ID:0]   rs2,
-  input logic  [REG_END_WORD:0] wdata,
-  output logic [REG_END_WORD:0] rdata1,
-  output logic [REG_END_WORD:0] rdata2);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
+  input logic                clock,
+  input logic                reset,
+  input logic                wen,
+  input logic  [REG_A_END:0] rd,
+  input logic  [REG_A_END:0] rs1,
+  input logic  [REG_A_END:0] rs2,
+  input logic  [REG_W_END:0] wdata,
+  output logic [REG_W_END:0] rdata1,
+  output logic [REG_W_END:0] rdata2);
 
-  logic [REG_END_WORD:0] regs [0:N_REGS-1];
+  import reg_defines::*;
+  localparam REG_NUM = 16;
+
+  logic [REG_W_END:0] regs [0:REG_NUM-1];
   integer i;
 
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
-      for (i = 0; i < N_REGS; i++) begin
+      for (i = 0; i < REG_NUM; i++) begin
         regs[i] <= 32'h0;
       end
-    end else if (wen && (rd != 0) && (rd < N_REGS)) begin
+    end else if (wen && (rd != 0) && (rd < REG_NUM)) begin
       regs[rd[3:0]] <= wdata;
     end
   end
 
   always_comb begin
-    rdata1 = (rs1 == 0 || rs1 >= N_REGS) ? 32'h0 : regs[rs1[3:0]];
-    rdata2 = (rs2 == 0 || rs2 >= N_REGS) ? 32'h0 : regs[rs2[3:0]];
+    rdata1 = (rs1 == 0 || rs1 >= REG_NUM) ? 32'h0 : regs[rs1[3:0]];
+    rdata2 = (rs2 == 0 || rs2 >= REG_NUM) ? 32'h0 : regs[rs2[3:0]];
   end
 
 endmodule

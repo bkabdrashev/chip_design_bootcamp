@@ -1,12 +1,10 @@
 module alu (
-  input  logic [ALU_OP_END:0]   op,
-  input  logic [REG_END_WORD:0] lhs,
-  input  logic [REG_END_WORD:0] rhs,
-  output logic [REG_END_WORD:0] res
-);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
+  input  logic [ALU_OP_END:0] op,
+  input  logic [REG_W_END:0]  lhs,
+  input  logic [REG_W_END:0]  rhs,
+  output logic [REG_W_END:0]  res);
+  import alu_defines::*;
+  import reg_defines::REG_W_END;
 
   logic [4:0] shamt;
 
@@ -26,7 +24,7 @@ module alu (
       ALU_OP_SLTU:res = { 31'b0, lhs < rhs };
       ALU_OP_LHS: res = lhs;
       ALU_OP_RHS: res = rhs;
-      default:    res = 'b1010; // not implemented
+      default:    res = 32'b0;
     endcase
   end
 

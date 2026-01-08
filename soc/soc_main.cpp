@@ -404,9 +404,9 @@ void vcpu_flash_init(TestBench* tb, uint8_t* data, uint32_t size) {
 
 void vcpu_tick(TestBench* tb) {
   tb->vcpu->eval();
-  // if (tb->is_trace) {
-  //   tb->trace->dump(tb->trace_dumps++);
-  // }
+  if (tb->is_trace) {
+    tb->trace->dump(tb->trace_dumps++);
+  }
 
   tb->vcpu_ticks++;
   tb->vcpu_cycles = tb->vcpu_ticks / 2;

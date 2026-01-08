@@ -1,11 +1,11 @@
 module com (
-  input  logic [COM_OP_END:0]   op,
-  input  logic [REG_END_WORD:0] lhs,
-  input  logic [REG_END_WORD:0] rhs,
-  output logic                  res);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
+  input  logic [COM_OP_END:0] op,
+  input  logic [REG_W_END:0]  lhs,
+  input  logic [REG_W_END:0]  rhs,
+  output logic                res);
+
+  import com_defines::*;
+  import reg_defines::REG_W_END;
 
   always_comb begin
     case (op)

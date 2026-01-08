@@ -1,14 +1,14 @@
+import reg_defines::REG_W_END;
+
 module csr (
-  input  logic        clock,
-  input  logic        reset,
-  input  logic        wen,
-  input  logic        is_done_inst,
-  input  logic [11:0] addr,
-  input  logic [REG_END_WORD:0] wdata,
-  output logic [REG_END_WORD:0] rdata);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
+  input  logic               clock,
+  input  logic               reset,
+  input  logic               wen,
+  input  logic               is_inst_ret,
+  input  logic [11:0]        addr,
+  input  logic [REG_W_END:0] wdata,
+  output logic [REG_W_END:0] rdata);
+
   localparam MCYCLE_ADDR    = 12'hB00; 
   localparam MCYCLEH_ADDR   = 12'hB80; 
   localparam MINSTRET_ADDR  = 12'hB02; 
@@ -37,11 +37,11 @@ module csr (
 
            if (addr == MINSTRET_ADDR)  minstret <= {minstret[63:32], wdata};
       else if (addr == MINSTRETH_ADDR) minstret <= {wdata, minstret[31: 0]};
-      else if (is_done_inst)           minstret <= minstret + 1;
+      else if (is_inst_ret)            minstret <= minstret + 1;
     end
     else begin
       mcycle <= mcycle + 1;
-      if (is_done_inst) minstret <= minstret + 1;
+      if (is_inst_ret) minstret <= minstret + 1;
     end
   end
 

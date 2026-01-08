@@ -15,62 +15,71 @@ module cpu (
   output        io_lsu_wen,
   output [31:0] io_lsu_wdata,
   output [3:0]  io_lsu_wmask);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
 
-  logic                  ebreak;
-  logic                  is_done_instruction;
+  import reg_defines::REG_A_END;
+  import reg_defines::REG_W_END;
+  import inst_defines::*;
+  import alu_defines::ALU_OP_END;
+  import com_defines::COM_OP_END;
+
+  logic                  is_inst_ret;
   logic                  is_lsu_busy;
+  logic                  is_ifu_busy;
 
-  logic [REG_END_ID:0]   rd;
-  logic [REG_END_ID:0]   rs1;
-  logic [REG_END_ID:0]   rs2;
-  logic [REG_END_WORD:0] imm;
+  logic [REG_A_END:0] rd;
+  logic [REG_A_END:0] rs1;
+  logic [REG_A_END:0] rs2;
+  logic [REG_W_END:0] imm;
 
-  logic [REG_END_WORD:0] pc;
-  logic                  pc_wen;
+  logic [REG_W_END:0] pc;
+  logic               pc_wen;
+  logic               is_pc_jump;
+  logic [REG_W_END:0] pc_next;
+  logic [REG_W_END:0] pc_inc;
 
-  logic [REG_END_WORD:0] alu_res;
-  logic [REG_END_WORD:0] alu_lhs;
-  logic [REG_END_WORD:0] alu_rhs;
-  logic [ALU_OP_END:0]   alu_op;
+  logic [REG_W_END:0]  alu_lhs;
+  logic [REG_W_END:0]  alu_rhs;
+  logic [ALU_OP_END:0] alu_op;
+  logic [REG_W_END:0]  alu_res;
 
-  logic [COM_OP_END:0]   com_op;
-  logic                  com_res;
+  logic [COM_OP_END:0] com_op;
+  logic                com_res;
 
-  logic                  reg_wen;
-  logic [REG_END_WORD:0] reg_wdata;
-  logic [REG_END_WORD:0] reg_rdata1;
-  logic [REG_END_WORD:0] reg_rdata2;
+  logic               reg_wen;
+  logic [REG_W_END:0] reg_wdata;
+  logic [REG_W_END:0] reg_rdata1;
+  logic [REG_W_END:0] reg_rdata2;
 
   logic [INST_TYPE_END:0] inst_type;
+  logic                   is_inst_ready;
 
-  logic [31:0]           lsu_rdata;
+  logic               is_lsu;
+  logic [REG_W_END:0] lsu_rdata;
 
-  logic [REG_END_WORD:0] csr_rdata;
-  logic [REG_END_WORD:0] csr_wdata;
-  logic                  csr_wen;
+  logic [REG_W_END:0] csr_rdata;
+  logic [REG_W_END:0] csr_wdata;
+  logic               csr_wen;
 
-  assign io_ifu_addr  = pc;
-
+  assign pc_wen = !is_ifu_busy && is_lsu_busy;
   pc u_pc(
     .clock(clock),
     .reset(reset),
-    .wen(pc_wen),
+    .wen  (pc_wen),
     .wdata(pc_next),
     .rdata(pc));
 
+  assign io_ifu_addr = pc;
   ifu u_ifu(
     .clock(clock),
     .reset(reset),
-    .inst_type(inst_type),
-    .ifu_respValid(io_ifu_respValid),
-    .ifu_reqValid(io_ifu_reqValid));
+    .is_retired    (is_inst_ret),
+    .is_busy       (is_ifu_busy),
+    .is_inst_ready (is_inst_ready),
+    .respValid     (io_ifu_respValid),
+    .reqValid      (io_ifu_reqValid));
 
   dec u_dec(
     .inst(io_ifu_rdata),
-    .clock(clock),
 
     .rd(rd),
     .rs1(rs1),
@@ -83,7 +92,7 @@ module cpu (
 
   always_comb begin
     case (inst_type)
-      INST_CSRRI:  alu_lhs = {27'b0,  rs1};
+      INST_CSRI:   alu_lhs = {27'b0,  rs1};
       INST_JUMP:   alu_lhs = pc;
       INST_AUIPC:  alu_lhs = pc;
       INST_BRANCH: alu_lhs = pc;
@@ -93,10 +102,10 @@ module cpu (
 
   always_comb begin
     case (inst_type)
-      INST_REG:   alu_rhs = reg_rdata2;
-      INST_CSRR:  alu_rhs = csr_rdata;
-      INST_CSRRI: alu_rhs = csr_rdata;
-      default:    alu_rhs = imm;
+      INST_REG:  alu_rhs = reg_rdata2;
+      INST_CSR:  alu_rhs = csr_rdata;
+      INST_CSRI: alu_rhs = csr_rdata;
+      default:   alu_rhs = imm;
     endcase
   end
 
@@ -133,34 +142,37 @@ module cpu (
     .reset(reset),
     .wen(csr_wen),
     .addr(imm[11:0]),
-    .is_done_inst(is_done_instruction),
+    .is_inst_ret(is_inst_ret),
     .wdata(csr_wdata),
     .rdata(csr_rdata));
 
-  assign io_lsu_wen  = inst_type[5:4] == INST_STORE;
+  assign is_lsu      = inst_type[4] & is_inst_ready;
+  assign io_lsu_wen  = inst_type[5:3] == INST_STORE;
   assign io_lsu_size = inst_type[1:0];
+  assign io_lsu_addr = alu_res;
+
   lsu u_lsu(
     .clock(clock),
     .reset(reset),
 
-    .is_lsu     (inst_type[4]),
+    .is_lsu     (is_lsu),
     .is_busy    (is_lsu_busy),
     .rdata      (io_lsu_rdata),
     .wdata      (reg_rdata2),
-    .addr       (alu_res),
+    .addr       (alu_res[1:0]),
     .data_size  (inst_type[1:0]),
     .is_mem_sign(inst_type[2]),
 
-    .lsu_respValid(io_lsu_respValid),
+    .respValid    (io_lsu_respValid),
 
-    .lsu_reqValid (io_lsu_reqValid),
+    .reqValid     (io_lsu_reqValid),
     .lsu_wdata    (io_lsu_wdata),
     .lsu_rdata    (lsu_rdata),
     .lsu_wmask    (io_lsu_wmask));
 
-  assign pc_inc  = pc + 4;
-  assign reg_wen = inst_type[3];
+  assign reg_wen = inst_type[3] && is_inst_ready && !is_lsu_busy;
   
+  assign pc_inc  = pc + 4;
   always_comb begin
     case (inst_type)
       INST_JUMP:    reg_wdata = pc_inc;
@@ -171,8 +183,8 @@ module cpu (
       INST_REG:     reg_wdata = alu_res;
       INST_IMM:     reg_wdata = alu_res;
 
-      INST_CSRR:    reg_wdata = csr_rdata;
-      INST_CSRRI:   reg_wdata = csr_rdata;
+      INST_CSR:    reg_wdata = csr_rdata;
+      INST_CSRI:   reg_wdata = csr_rdata;
 
       INST_LOAD_B:  reg_wdata = lsu_rdata;
       INST_LOAD_H:  reg_wdata = lsu_rdata;
@@ -184,32 +196,32 @@ module cpu (
     endcase
   end
 
-  assign is_pc_jump = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
+  assign is_pc_jump  = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
+  assign is_inst_ret = !is_lsu_busy && !is_ifu_busy;
   always_comb begin
      if (is_pc_jump) pc_next = alu_res;
      else            pc_next = pc_inc;
   end
 
 `ifdef verilator
+/* verilator lint_off UNUSEDSIGNAL */
 reg [119:0] dbg_inst_type;
 
 always @ *
 begin
     case (inst_type)
-      INST_EBREAK     : dbg_inst_type = "INST_EBREAK";
-      INST_CSRRW      : dbg_inst_type = "INST_CSRRW";
-      INST_CSRRS      : dbg_inst_type = "INST_CSRRS";
-      INST_CSRRC      : dbg_inst_type = "INST_CSRRC";
-      INST_CSRRWI     : dbg_inst_type = "INST_CSRRWI";
-      INST_CSRRSI     : dbg_inst_type = "INST_CSRRSI";
-      INST_CSRRCI     : dbg_inst_type = "INST_CSRRCI";
+      INST_EBREAK   : dbg_inst_type = "INST_EBREAK";
+      INST_CSR      : dbg_inst_type = "INST_CSR";
+      INST_CSRI     : dbg_inst_type = "INST_CSRI";
 
-      INST_LOAD_BYTE  : dbg_inst_type = "INST_LOAD_BYTE";
-      INST_LOAD_HALF  : dbg_inst_type = "INST_LOAD_HALF";
-      INST_LOAD_WORD  : dbg_inst_type = "INST_LOAD_WORD";
-      INST_STORE_BYTE : dbg_inst_type = "INST_STORE_BYTE";
-      INST_STORE_HALF : dbg_inst_type = "INST_STORE_HALF";
-      INST_STORE_WORD : dbg_inst_type = "INST_STORE_WORD";
+      INST_LOAD_B  : dbg_inst_type = "INST_LOAD_B";
+      INST_LOAD_H  : dbg_inst_type = "INST_LOAD_H";
+      INST_LOAD_W  : dbg_inst_type = "INST_LOAD_W";
+      INST_LOAD_BU : dbg_inst_type = "INST_LOAD_BU";
+      INST_LOAD_HU : dbg_inst_type = "INST_LOAD_HU";
+      INST_STORE_B : dbg_inst_type = "INST_STORE_B";
+      INST_STORE_H : dbg_inst_type = "INST_STORE_H";
+      INST_STORE_W : dbg_inst_type = "INST_STORE_W";
 
       INST_BRANCH     : dbg_inst_type = "INST_BRANCH";
       INST_IMM        : dbg_inst_type = "INST_IMM";
@@ -221,6 +233,7 @@ begin
       default         : dbg_inst_type = "INST_UNDEFINED";
     endcase
 end
+/* verilator lint_on UNUSEDSIGNAL */
 `endif
 
 endmodule

@@ -5,12 +5,12 @@ module lsu (
   input               is_lsu,
   input  logic [31:0] rdata,
   input  logic [31:0] wdata,
-  input  logic [31:0] addr,
+  input  logic [1:0]  addr,
   input  logic [1:0]  data_size,
   input  logic        is_mem_sign,
 
-  input  logic        lsu_respValid,
-  output logic        lsu_reqValid,
+  input  logic        respValid,
+  output logic        reqValid,
   output logic        is_busy,
   output logic [31:0] lsu_wdata,
   output logic [31:0] lsu_rdata,
@@ -20,6 +20,13 @@ module lsu (
   localparam LSU_HALF = 2'b01;
   localparam LSU_WORD = 2'b10;
   localparam LSU_NONE = 2'b11;
+
+  logic [31:0] align_rdata;
+  logic [1:0]  addr_offset;
+  logic        mem_byte_sign   = align_rdata[ 7] & is_mem_sign;
+  logic        mem_half_sign   = align_rdata[15] & is_mem_sign;
+  logic [23:0] mem_byte_extend = {24{mem_byte_sign}};
+  logic [15:0] mem_half_extend = {16{mem_half_sign}};
 
   assign addr_offset = addr[1:0];
   always_comb begin
@@ -48,7 +55,7 @@ module lsu (
         endcase
       end
       LSU_WORD: begin
-        case (alu_res[1:0])
+        case (addr_offset)
           2'b00: lsu_wmask = 4'b1111;
           2'b01: lsu_wmask = 4'b1110;
           2'b10: lsu_wmask = 4'b1100;
@@ -83,34 +90,34 @@ module lsu (
     endcase
   end
 
-  typedef enum logic [2:0] {
+  typedef enum logic {
     IDLE, WAIT
-  } ls_state;
+  } lsu_state;
 
-  ls_state next_state;
-  ls_state curr_state;
+  lsu_state next_state;
+  lsu_state curr_state;
 
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
-      state_curr <= IDLE;
+      curr_state <= IDLE;
     end else begin
-      state_curr <= next_state;
+      curr_state <= next_state;
     end
   end
 
   always_comb begin
-    lsu_reqValid = 1'b0;
-    case (state_curr)
+    reqValid = 1'b0;
+    case (curr_state)
       IDLE: begin
         if (is_lsu) begin
           next_state    = WAIT;
-          lsu_reqValid  = 1'b1;
+          reqValid  = 1'b1;
         end
         else next_state = IDLE;
       end
       WAIT: begin
-        if (lsu_respValid) next_state = IDLE;
-        else               next_state = WAIT;
+        if (respValid) next_state = IDLE;
+        else           next_state = WAIT;
       end
     endcase
   end

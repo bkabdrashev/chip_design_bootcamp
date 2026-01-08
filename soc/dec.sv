@@ -1,18 +1,47 @@
 module dec (
-  input logic [REG_END_WORD:0]   inst,
-  input logic                    clock,
+  input  logic [REG_W_END:0]     inst,
 
-  output logic [REG_END_ID:0]    rd,
-  output logic [REG_END_ID:0]    rs1,
-  output logic [REG_END_ID:0]    rs2,
+  output logic [REG_A_END:0]     rd,
+  output logic [REG_A_END:0]     rs1,
+  output logic [REG_A_END:0]     rs2,
 
-  output logic [REG_END_WORD:0]  imm,
+  output logic [REG_W_END:0]     imm,
   output logic [ALU_OP_END:0]    alu_op,
   output logic [COM_OP_END:0]    com_op,
   output logic [INST_TYPE_END:0] inst_type);
-/* verilator lint_off UNUSEDPARAM */
-  `include "defs.vh"
-/* verilator lint_on UNUSEDPARAM */
+
+  import reg_defines::REG_W_END;
+  import reg_defines::REG_A_END;
+  import alu_defines::ALU_OP_END;
+  import alu_defines::ALU_OP_ADD;
+  import alu_defines::ALU_OP_RHS;
+  import com_defines::COM_OP_END;
+  import com_defines::COM_OP_ONE;
+  import inst_defines::*;
+
+  localparam FUNCT3_SR        = 3'b101;
+  localparam FUNCT3_ADD       = 3'b000;
+
+  localparam OPCODE_LUI       = 7'b0110111;
+  localparam OPCODE_AUIPC     = 7'b0010111;
+  localparam OPCODE_JAL       = 7'b1101111;
+  localparam OPCODE_JALR      = 7'b1100111;
+  localparam OPCODE_BRANCH    = 7'b1100011;
+  localparam OPCODE_LOAD      = 7'b0000011;
+  localparam OPCODE_STORE     = 7'b0100011;
+  localparam OPCODE_CALC_IMM  = 7'b0010011;
+  localparam OPCODE_CALC_REG  = 7'b0110011;
+  localparam OPCODE_SYSTEM    = 7'b1110011;
+
+  logic [6:0]         opcode;
+  logic [2:0]         funct3;
+  logic               sign;
+  logic               sub;
+  logic [REG_W_END:0] i_imm;
+  logic [REG_W_END:0] u_imm;
+  logic [REG_W_END:0] s_imm;
+  logic [REG_W_END:0] j_imm;
+  logic [REG_W_END:0] b_imm;
 
   assign opcode = inst[6:0];
   assign rd     = inst[11:7];
