@@ -90,8 +90,8 @@ module lsu (
     endcase
   end
 
-  typedef enum logic {
-    IDLE, WAIT
+  typedef enum logic [1:0] {
+    LSU_IDLE, LSU_WAIT1, LSU_WAIT2
   } lsu_state;
 
   lsu_state next_state;
@@ -99,7 +99,7 @@ module lsu (
 
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
-      curr_state <= IDLE;
+      curr_state <= LSU_IDLE;
     end else begin
       curr_state <= next_state;
     end
@@ -108,19 +108,20 @@ module lsu (
   always_comb begin
     reqValid = 1'b0;
     case (curr_state)
-      IDLE: begin
+      LSU_IDLE: begin
         if (is_lsu) begin
-          next_state    = WAIT;
-          reqValid  = 1'b1;
+          next_state = LSU_WAIT1;
+          reqValid   = 1'b1;
         end
-        else next_state = IDLE;
+        else next_state = LSU_IDLE;
       end
-      WAIT: begin
-        if (respValid) next_state = IDLE;
-        else           next_state = WAIT;
+      LSU_WAIT1: begin
+        if (respValid) next_state = LSU_IDLE;
+        else           next_state = LSU_WAIT1;
       end
+      default: begin end
     endcase
   end
 
-  assign is_busy = next_state != IDLE;
+  assign is_busy = next_state != LSU_IDLE;
 endmodule
