@@ -1,12 +1,12 @@
 module ifu (
-  input logic         clock,
-  input logic         reset,
+  input logic  clock,
+  input logic  reset,
 
-  input  logic        is_retired,
-  input  logic        respValid,
-  output logic        reqValid,
-  output logic        is_inst_ready,
-  output logic        is_busy);
+  input  logic is_fetch_inst,
+  input  logic respValid,
+  output logic reqValid,
+  output logic is_inst_ready,
+  output logic is_busy);
 
   typedef enum logic {
     IDLE, WAIT
@@ -28,9 +28,9 @@ module ifu (
     is_inst_ready = 1'b0;
     case (curr_state)
       IDLE: begin
-        if (is_retired) begin
-          next_state = WAIT;
-          reqValid   = 1'b1;
+        if (is_fetch_inst) begin
+          reqValid    = 1'b1;
+          next_state  = WAIT;
         end
         else next_state = IDLE;
       end
@@ -44,6 +44,7 @@ module ifu (
     endcase
   end
 
-  assign is_busy = curr_state != IDLE;
+  assign is_busy = curr_state != IDLE && !respValid;
+
 endmodule
 

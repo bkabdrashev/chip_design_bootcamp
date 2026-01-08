@@ -122,5 +122,5 @@ module lsu (
     endcase
   end
 
-  assign is_busy = curr_state != IDLE;
+  assign is_busy = next_state != IDLE;
 endmodule

@@ -19,9 +19,9 @@
 typedef VysyxSoCTop VSoC;
 
 struct Vcpucpu {
-  uint8_t& ebreak;
+  uint8_t & ebreak;
   uint32_t& pc;
-  uint8_t&  is_done_instruction;
+  uint8_t & is_inst_ret;
   uint64_t& mcycle;
   uint64_t& minstret;
   VlUnpacked<uint32_t, 16>&  regs;
@@ -49,7 +49,6 @@ struct TestBenchConfig {
   uint64_t seed       = 0;
   uint64_t max_tests  = 0;
   uint32_t n_insts    = 0;
-
 };
 
 struct TestBench {
@@ -69,7 +68,6 @@ struct TestBench {
   bool is_check;
   uint64_t seed;
   uint64_t max_tests;
-
 
   VerilatedContext* contextp;
   VSoC* vsoc;
@@ -123,14 +121,14 @@ TestBench new_testbench(TestBenchConfig config) {
 
   tb.vsoc = new VSoC;
   tb.vsoc_cpu = new VSoCcpu{
-    .ebreak              = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__ebreak,
-    .pc                  = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__pc,
-    .is_done_instruction = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_done_instruction,
-    .mcycle              = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__mcycle,
-    .minstret            = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__minstret,
-    .regs                = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_rf__DOT__regs,
-    .mem                 = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__sdram__DOT__mem_ext__DOT__Memory,
-    .uart                = {
+    .ebreak      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__ebreak,
+    .pc          = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__pc,
+    .is_inst_ret = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_inst_ret,
+    .mcycle      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__mcycle,
+    .minstret    = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__minstret,
+    .regs        = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_rf__DOT__regs,
+    .mem         = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__sdram__DOT__mem_ext__DOT__Memory,
+    .uart        = {
       .ier = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__ier,
       .iir = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__iir,
       .fcr = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__luart__DOT__muart__DOT__Uregs__DOT__fcr,
@@ -150,12 +148,12 @@ TestBench new_testbench(TestBenchConfig config) {
 
   tb.vcpu = new Vcpu;
   tb.vcpu_cpu = new Vcpucpu {
-    .ebreak              = tb.vcpu->rootp->cpu__DOT__ebreak,
-    .pc                  = tb.vcpu->rootp->cpu__DOT__pc,
-    .is_done_instruction = tb.vcpu->rootp->cpu__DOT__is_done_instruction,
-    .mcycle              = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__mcycle,
-    .minstret            = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__minstret,
-    .regs                = tb.vcpu->rootp->cpu__DOT__u_rf__DOT__regs,
+    .ebreak      = tb.vcpu->rootp->cpu__DOT__ebreak,
+    .pc          = tb.vcpu->rootp->cpu__DOT__pc,
+    .is_inst_ret = tb.vcpu->rootp->cpu__DOT__is_inst_ret,
+    .mcycle      = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__mcycle,
+    .minstret    = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__minstret,
+    .regs        = tb.vcpu->rootp->cpu__DOT__u_rf__DOT__regs,
   };
 
   tb.gcpu = new Gcpu;
@@ -168,9 +166,6 @@ TestBench new_testbench(TestBenchConfig config) {
     tb.trace = new VerilatedVcdC;
     if (tb.is_vsoc) {
       tb.vsoc->trace(tb.trace, 5);
-    }
-    if (tb.is_vcpu) {
-      tb.vcpu->trace(tb.trace, 5);
     }
     tb.trace->open(tb.trace_file);
   }
@@ -324,7 +319,7 @@ void vsoc_fetch_exec(TestBench* tb) {
     vsoc_cycle(tb);
     if (tb->max_cycles && tb->vsoc_cycles >= tb->max_cycles) break;
     if (tb->vsoc_cpu->ebreak) break;
-    if (tb->vsoc_cpu->is_done_instruction) break;
+    if (tb->vsoc_cpu->is_inst_ret) break;
   }
 }
 
@@ -404,10 +399,6 @@ void vcpu_flash_init(TestBench* tb, uint8_t* data, uint32_t size) {
 
 void vcpu_tick(TestBench* tb) {
   tb->vcpu->eval();
-  if (tb->is_trace) {
-    tb->trace->dump(tb->trace_dumps++);
-  }
-
   tb->vcpu_ticks++;
   tb->vcpu_cycles = tb->vcpu_ticks / 2;
   if (tb->is_cycles && tb->vcpu_cycles % 1'000'000 == 0) printf("[INFO] vcpu cycles: %lu\n", tb->vcpu_cycles);
@@ -445,7 +436,7 @@ void vcpu_fetch_exec(TestBench* tb) {
 
     if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break;
     if (tb->vcpu_cpu->ebreak) break;
-    if (tb->vcpu_cpu->is_done_instruction) break;
+    if (tb->vcpu_cpu->is_inst_ret) break;
 
     if (tb->vcpu->io_ifu_reqValid) {
       tb->vcpu->io_ifu_respValid = 1;

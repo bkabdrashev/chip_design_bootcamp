@@ -22,9 +22,11 @@ module cpu (
   import alu_defines::ALU_OP_END;
   import com_defines::COM_OP_END;
 
-  logic                  is_inst_ret;
-  logic                  is_lsu_busy;
-  logic                  is_ifu_busy;
+  logic               is_inst_ret;
+  logic               is_fetch_inst;
+  logic               is_lsu_busy;
+  logic               is_ifu_busy;
+  logic               ebreak;
 
   logic [REG_A_END:0] rd;
   logic [REG_A_END:0] rs1;
@@ -60,7 +62,6 @@ module cpu (
   logic [REG_W_END:0] csr_wdata;
   logic               csr_wen;
 
-  assign pc_wen = !is_ifu_busy && is_lsu_busy;
   pc u_pc(
     .clock(clock),
     .reset(reset),
@@ -68,11 +69,11 @@ module cpu (
     .wdata(pc_next),
     .rdata(pc));
 
-  assign io_ifu_addr = pc;
+  assign io_ifu_addr = pc_next;
   ifu u_ifu(
     .clock(clock),
     .reset(reset),
-    .is_retired    (is_inst_ret),
+    .is_fetch_inst (is_fetch_inst),
     .is_busy       (is_ifu_busy),
     .is_inst_ready (is_inst_ready),
     .respValid     (io_ifu_respValid),
@@ -170,9 +171,69 @@ module cpu (
     .lsu_rdata    (lsu_rdata),
     .lsu_wmask    (io_lsu_wmask));
 
-  assign reg_wen = inst_type[3] && is_inst_ready && !is_lsu_busy;
+  always_ff @(posedge clock or posedge reset) begin
+    if (reset) begin
+      ebreak <= 1'b0;
+    end else begin
+      ebreak <= inst_type == INST_EBREAK;
+    end
+  end
+
+  typedef enum logic [1:0] {
+    START, STAL, EXEC, NONE
+  } exu_state;
+
+  exu_state next_state;
+  exu_state curr_state;
+
+  logic next_is_fetch_inst;
+  assign is_pc_jump  = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
+  always_ff @(posedge clock or posedge reset) begin
+    if (reset) begin
+      curr_state    <= START;
+      is_inst_ret   <= 1'b0;
+      is_fetch_inst <= 1'b0;
+    end else begin
+
+      curr_state    <= next_state;
+      is_inst_ret   <= next_state == STAL && curr_state == EXEC;
+      is_fetch_inst <= next_is_fetch_inst;
+    end
+  end
+
+  always_comb begin
+    next_is_fetch_inst = 1'b0;
+    case (curr_state) 
+      START: begin
+        next_state = STAL;
+        next_is_fetch_inst = 1'b1;
+      end
+      STAL: begin
+        if (is_ifu_busy || is_lsu_busy || io_ifu_reqValid || io_lsu_reqValid) next_state = STAL;
+        else begin
+          next_state = EXEC;
+          next_is_fetch_inst = 1'b1;
+        end
+      end
+      EXEC: begin
+        next_state = STAL;
+      end
+      NONE: begin
+        next_state = STAL;
+      end
+    endcase
+  end
+
+  assign reg_wen = inst_type[3] && next_state == EXEC && !ebreak;
+  assign pc_wen  = next_is_fetch_inst;
   
   assign pc_inc  = pc + 4;
+  always_comb begin
+    if (curr_state == START || next_state == STAL) pc_next = pc;
+    else if (is_pc_jump)                           pc_next = alu_res;
+    else                                           pc_next = pc_inc;
+  end
+
   always_comb begin
     case (inst_type)
       INST_JUMP:    reg_wdata = pc_inc;
@@ -183,8 +244,8 @@ module cpu (
       INST_REG:     reg_wdata = alu_res;
       INST_IMM:     reg_wdata = alu_res;
 
-      INST_CSR:    reg_wdata = csr_rdata;
-      INST_CSRI:   reg_wdata = csr_rdata;
+      INST_CSR:     reg_wdata = csr_rdata;
+      INST_CSRI:    reg_wdata = csr_rdata;
 
       INST_LOAD_B:  reg_wdata = lsu_rdata;
       INST_LOAD_H:  reg_wdata = lsu_rdata;
@@ -196,42 +257,43 @@ module cpu (
     endcase
   end
 
-  assign is_pc_jump  = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
-  assign is_inst_ret = !is_lsu_busy && !is_ifu_busy;
-  always_comb begin
-     if (is_pc_jump) pc_next = alu_res;
-     else            pc_next = pc_inc;
-  end
-
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
 reg [119:0] dbg_inst_type;
+reg [39:0]  dbg_state;
 
-always @ *
-begin
-    case (inst_type)
-      INST_EBREAK   : dbg_inst_type = "INST_EBREAK";
-      INST_CSR      : dbg_inst_type = "INST_CSR";
-      INST_CSRI     : dbg_inst_type = "INST_CSRI";
+always @ * begin
+  case (inst_type)
+    INST_EBREAK   : dbg_inst_type = "INST_EBREAK";
+    INST_CSR      : dbg_inst_type = "INST_CSR";
+    INST_CSRI     : dbg_inst_type = "INST_CSRI";
 
-      INST_LOAD_B  : dbg_inst_type = "INST_LOAD_B";
-      INST_LOAD_H  : dbg_inst_type = "INST_LOAD_H";
-      INST_LOAD_W  : dbg_inst_type = "INST_LOAD_W";
-      INST_LOAD_BU : dbg_inst_type = "INST_LOAD_BU";
-      INST_LOAD_HU : dbg_inst_type = "INST_LOAD_HU";
-      INST_STORE_B : dbg_inst_type = "INST_STORE_B";
-      INST_STORE_H : dbg_inst_type = "INST_STORE_H";
-      INST_STORE_W : dbg_inst_type = "INST_STORE_W";
+    INST_LOAD_B  : dbg_inst_type = "INST_LOAD_B";
+    INST_LOAD_H  : dbg_inst_type = "INST_LOAD_H";
+    INST_LOAD_W  : dbg_inst_type = "INST_LOAD_W";
+    INST_LOAD_BU : dbg_inst_type = "INST_LOAD_BU";
+    INST_LOAD_HU : dbg_inst_type = "INST_LOAD_HU";
+    INST_STORE_B : dbg_inst_type = "INST_STORE_B";
+    INST_STORE_H : dbg_inst_type = "INST_STORE_H";
+    INST_STORE_W : dbg_inst_type = "INST_STORE_W";
 
-      INST_BRANCH     : dbg_inst_type = "INST_BRANCH";
-      INST_IMM        : dbg_inst_type = "INST_IMM";
-      INST_REG        : dbg_inst_type = "INST_REG";
-      INST_UPP        : dbg_inst_type = "INST_UPP";
-      INST_JUMP       : dbg_inst_type = "INST_JUMP";
-      INST_JUMPR      : dbg_inst_type = "INST_JUMPR";
-      INST_AUIPC      : dbg_inst_type = "INST_AUIPC";
-      default         : dbg_inst_type = "INST_UNDEFINED";
-    endcase
+    INST_BRANCH     : dbg_inst_type = "INST_BRANCH";
+    INST_IMM        : dbg_inst_type = "INST_IMM";
+    INST_REG        : dbg_inst_type = "INST_REG";
+    INST_UPP        : dbg_inst_type = "INST_UPP";
+    INST_JUMP       : dbg_inst_type = "INST_JUMP";
+    INST_JUMPR      : dbg_inst_type = "INST_JUMPR";
+    INST_AUIPC      : dbg_inst_type = "INST_AUIPC";
+    default         : dbg_inst_type = "INST_UNDEFINED";
+  endcase
+end
+always @ * begin
+  case (curr_state)
+    START : dbg_state = "START";
+    STAL  : dbg_state = "STAL" ;
+    EXEC  : dbg_state = "EXEC" ;
+    NONE  : dbg_state = "NONE" ;
+  endcase
 end
 /* verilator lint_on UNUSEDSIGNAL */
 `endif

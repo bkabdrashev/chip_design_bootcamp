@@ -61,9 +61,9 @@ struct VSoCuart {
 };
 
 struct VSoCcpu {
-  uint8_t&  ebreak;
+  uint8_t & ebreak;
   uint32_t& pc;
-  uint8_t&  is_done_instruction;
+  uint8_t & is_inst_ret;
   uint64_t& mcycle;
   uint64_t& minstret;
   VlUnpacked<uint32_t, 16>&  regs;
