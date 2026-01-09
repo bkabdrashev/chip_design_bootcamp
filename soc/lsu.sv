@@ -2,21 +2,23 @@ module lsu (
   input logic         clock,
   input logic         reset,
 
-  input               is_lsu,
+  input               reqValid,
+  output              respValid,
   input               is_read,
-  input  logic [31:0] rdata,
   input  logic [31:0] wdata,
   input  logic [31:0] addr,
   input  logic [1:0]  data_size,
   input  logic        is_mem_sign,
+  output logic [31:0] rdata,
 
-  input  logic        respValid,
-  output logic        reqValid,
-  output logic        is_busy,
-  output logic [31:0] lsu_wdata,
-  output logic [31:0] lsu_rdata,
-  output logic [31:0] lsu_addr,
-  output logic [3:0]  lsu_wmask);
+  output logic        io_reqValid,
+  input  logic        io_respValid,
+  output logic [31:0] io_wdata,
+  input  logic [31:0] io_rdata,
+  output logic [31:0] io_addr,
+  output logic [1:0]  io_size,
+  output logic        io_wen,
+  output logic [3:0]  io_wmask);
 
   localparam LSU_BYTE = 2'b00;
   localparam LSU_HALF = 2'b01;
@@ -34,58 +36,59 @@ module lsu (
   logic        is_misalign;
   logic        is_second_part;
 
-  assign       is_misalign     = (addr_offset != 2'b00 && data_size == LSU_WORD) ||
-                                 (addr_offset == 2'b11 && data_size == LSU_HALF) ;;
-  assign       lsu_addr        = is_second_part ? {addr[31:2]+29'b1, 2'b00} : addr;
-  assign       addr_offset     = addr[1:0];
-  assign       is_busy         = next_state != LSU_IDLE;
+  assign is_misalign = (addr_offset != 2'b00 && data_size == LSU_WORD) ||
+                       (addr_offset == 2'b11 && data_size == LSU_HALF) ;;
+  assign addr_offset = addr[1:0];
+  assign io_addr     = is_second_part ? {addr[31:2]+29'b1, 2'b00} : addr;
+  assign io_size     = data_size;
+  assign io_wen      = ~is_read;
 
   always_comb begin
     case (addr_offset)
-      2'b00: lsu_wdata =  wdata[31:0];
-      2'b01: lsu_wdata = {wdata[23:0], wdata[31:24]};
-      2'b10: lsu_wdata = {wdata[15:0], wdata[31:16]};
-      2'b11: lsu_wdata = {wdata[ 7:0], wdata[31: 8]};
+      2'b00: io_wdata =  wdata[31:0];
+      2'b01: io_wdata = {wdata[23:0], wdata[31:24]};
+      2'b10: io_wdata = {wdata[15:0], wdata[31:16]};
+      2'b11: io_wdata = {wdata[ 7:0], wdata[31: 8]};
     endcase
 
     case (data_size)
       LSU_BYTE: begin
         case (addr_offset)
-          2'b00: lsu_wmask = 4'b0001;
-          2'b01: lsu_wmask = 4'b0010;
-          2'b10: lsu_wmask = 4'b0100;
-          2'b11: lsu_wmask = 4'b1000;
+          2'b00: io_wmask = 4'b0001;
+          2'b01: io_wmask = 4'b0010;
+          2'b10: io_wmask = 4'b0100;
+          2'b11: io_wmask = 4'b1000;
         endcase
       end
       LSU_HALF: begin
         if (is_second_part)
-          lsu_wmask = 4'b0001;
+          io_wmask = 4'b0001;
         else
           case (addr_offset)
-            2'b00: lsu_wmask = 4'b0011;
-            2'b01: lsu_wmask = 4'b0110;
-            2'b10: lsu_wmask = 4'b1100;
-            2'b11: lsu_wmask = 4'b1000;
+            2'b00: io_wmask = 4'b0011;
+            2'b01: io_wmask = 4'b0110;
+            2'b10: io_wmask = 4'b1100;
+            2'b11: io_wmask = 4'b1000;
           endcase
       end
       LSU_WORD: begin
         if (is_second_part)
           case (addr_offset)
-            2'b00: lsu_wmask = 4'b1111;
-            2'b01: lsu_wmask = 4'b0001;
-            2'b10: lsu_wmask = 4'b0011;
-            2'b11: lsu_wmask = 4'b0111;
+            2'b00: io_wmask = 4'b1111;
+            2'b01: io_wmask = 4'b0001;
+            2'b10: io_wmask = 4'b0011;
+            2'b11: io_wmask = 4'b0111;
           endcase
         else
           case (addr_offset)
-            2'b00: lsu_wmask = 4'b1111;
-            2'b01: lsu_wmask = 4'b1110;
-            2'b10: lsu_wmask = 4'b1100;
-            2'b11: lsu_wmask = 4'b1000;
+            2'b00: io_wmask = 4'b1111;
+            2'b01: io_wmask = 4'b1110;
+            2'b10: io_wmask = 4'b1100;
+            2'b11: io_wmask = 4'b1000;
           endcase
       end
       LSU_EXTA: begin
-        lsu_wmask = 4'b1111;
+        io_wmask = 4'b1111;
       end
     endcase
   end
@@ -94,27 +97,17 @@ module lsu (
     if (reset) begin
       first_rdata_q  <= 24'b0;
     end begin
-      if (is_read && respValid) begin
-        first_rdata_q  <= rdata[31:8];
+      if (is_read && io_respValid) begin
+        first_rdata_q  <= io_rdata[31:8];
       end
     end
   end
-  /*
-  |0123|4567|
-  lbu at 3
-  align to 0 and read
-  first <= |123|
-  align to 4 and read
-  rdata = |4567|
-  align_rdata = |3456|
-  */
-
   always_comb begin
     case (addr_offset)
-      2'b00: align_rdata =  rdata[31:0];
-      2'b01: align_rdata = {rdata[ 7:0], first_rdata[31: 8]};
-      2'b10: align_rdata = {rdata[15:0], first_rdata[31:16]};
-      2'b11: align_rdata = {rdata[23:0], first_rdata[31:24]};
+      2'b00: align_rdata =  io_rdata[31:0];
+      2'b01: align_rdata = {io_rdata[ 7:0], first_rdata[31: 8]};
+      2'b10: align_rdata = {io_rdata[15:0], first_rdata[31:16]};
+      2'b11: align_rdata = {io_rdata[23:0], first_rdata[31:24]};
     endcase
   end
 
@@ -125,10 +118,10 @@ module lsu (
 
   always_comb begin
     case (data_size)
-      LSU_BYTE: lsu_rdata = {mem_byte_extend, align_rdata[ 7:0]};
-      LSU_HALF: lsu_rdata = {mem_half_extend, align_rdata[15:0]};
-      LSU_WORD: lsu_rdata = align_rdata[31:0];
-      LSU_EXTA: lsu_rdata = align_rdata[31:0];
+      LSU_BYTE: rdata = {mem_byte_extend, align_rdata[ 7:0]};
+      LSU_HALF: rdata = {mem_half_extend, align_rdata[15:0]};
+      LSU_WORD: rdata = align_rdata[31:0];
+      LSU_EXTA: rdata = align_rdata[31:0];
     endcase
   end
 
@@ -148,44 +141,53 @@ module lsu (
   end
 
   always_comb begin
-    reqValid       = 1'b0;
+    io_reqValid    = 1'b0;
+    respValid      = 1'b0;
     is_second_part = 1'b0;
-    first_rdata  = rdata[31:8];
+    first_rdata    = rdata[31:8];
     case (curr_state)
       LSU_IDLE: begin
-        if (is_lsu) begin
-          next_state = is_misalign ? LSU_WAIT_TWO : LSU_WAIT_ONE;
-          reqValid   = 1'b1;
+        if (reqValid) begin
+          next_state  = is_misalign ? LSU_WAIT_TWO : LSU_WAIT_ONE;
+          io_reqValid = 1'b1;
         end
-        else next_state = LSU_IDLE;
+        else begin
+          next_state = LSU_IDLE;
+        end
       end
       LSU_WAIT_ONE: begin
-        if (respValid) begin
-          next_state   = LSU_IDLE;
+        if (io_respValid) begin
+          next_state = LSU_IDLE;
+          respValid  = 1'b1;
         end
-        else next_state = LSU_WAIT_ONE;
+        else begin
+          next_state = LSU_WAIT_ONE;
+        end
       end
       LSU_WAIT_MIS: begin
-        if (respValid) begin
-          next_state = LSU_IDLE;
-          first_rdata  = first_rdata_q;
+        if (io_respValid) begin
+          next_state  = LSU_IDLE;
+          first_rdata = first_rdata_q;
+          respValid   = 1'b1;
         end
         else begin
           is_second_part = 1'b1;
-          next_state = LSU_WAIT_MIS;
+          next_state     = LSU_WAIT_MIS;
         end
       end
       LSU_WAIT_REQ: begin
         is_second_part = 1'b1;
-        next_state = LSU_WAIT_MIS;
-        reqValid   = 1'b1;
+        next_state     = LSU_WAIT_MIS;
+        io_reqValid    = 1'b1;
       end
       LSU_WAIT_TWO: begin
-        if (respValid) begin
+        if (io_respValid) begin
           is_second_part = 1'b1;
-          next_state = LSU_WAIT_REQ;
+          next_state     = LSU_WAIT_REQ;
         end
-        else next_state = LSU_WAIT_TWO;
+        else begin
+          next_state = LSU_WAIT_TWO;
+        end
       end
       default: begin
         next_state = LSU_IDLE;

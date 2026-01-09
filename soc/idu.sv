@@ -1,4 +1,4 @@
-module dec (
+module idu (
   input  logic [REG_W_END:0]     inst,
 
   output logic [REG_A_END:0]     rd,

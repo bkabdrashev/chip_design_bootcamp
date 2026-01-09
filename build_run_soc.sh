@@ -8,7 +8,7 @@ verilator --trace -cc \
   -Wall \
   -Isoc \
   soc/cpu.sv \
-  soc/rf.sv soc/pc.sv soc/dec.sv soc/alu.sv soc/csr.sv soc/com.sv \
+  soc/rf.sv soc/pc.sv soc/exu.sv soc/idu.sv soc/alu.sv soc/csr.sv soc/com.sv \
   soc/reg_defines.vh soc/com_defines.vh soc/alu_defines.vh soc/inst_defines.vh \
   --timescale "1ns/1ns" \
   --no-timing \

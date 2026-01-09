@@ -1,12 +1,16 @@
 module ifu (
-  input logic  clock,
-  input logic  reset,
-
-  input  logic is_fetch_inst,
-  input  logic respValid,
-  output logic reqValid,
-  output logic is_inst_ready,
-  output logic is_busy);
+  input  logic  clock,
+  input  logic  reset,
+// IO messages
+  input  logic        io_respValid,
+  input  logic [31:0] io_rdata,
+  output logic [31:0] io_addr,
+  output logic        io_reqValid,
+// EXU/Pipeline messages
+  input  logic [31:0] pc,
+  input  logic        reqValid,
+  output logic        respValid,
+  output logic [31:0] inst);
 
   typedef enum logic {
     IDLE, WAIT
@@ -24,27 +28,37 @@ module ifu (
   end
 
   always_comb begin
-    reqValid      = 1'b0;
-    is_inst_ready = 1'b0;
+    io_reqValid = 1'b0;
+    respValid   = 1'b0;
+    inst        = 32'b0;
+    next_state  = curr_state;
     case (curr_state)
       IDLE: begin
-        if (is_fetch_inst) begin
-          reqValid    = 1'b1;
+        if (reqValid) begin
+          io_reqValid = 1'b1;
+          io_addr     = pc;
           next_state  = WAIT;
         end
-        else next_state = IDLE;
+        else begin
+          next_state = IDLE;
+        end
       end
       WAIT: begin
-        if (respValid) begin
+        if (io_respValid) begin
+          inst          = io_rdata;
+          respValid     = 1'b1;
+          if (reqValid) begin
+            next_state = WAIT;
+            io_reqValid = 1'b1;
+          end
           next_state    = IDLE;
-          is_inst_ready = 1'b1;
         end
-        else next_state = WAIT;
+        else begin
+          next_state = WAIT;
+        end
       end
     endcase
   end
-
-  assign is_busy = next_state != IDLE;
 
 endmodule
 

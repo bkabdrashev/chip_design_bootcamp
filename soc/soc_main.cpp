@@ -167,6 +167,9 @@ TestBench new_testbench(TestBenchConfig config) {
     if (tb.is_vsoc) {
       tb.vsoc->trace(tb.trace, 5);
     }
+    if (tb.is_vcpu) {
+      tb.vcpu->trace(tb.trace, 5);
+    }
     tb.trace->open(tb.trace_file);
   }
   return tb;
@@ -327,7 +330,6 @@ void vsoc_fetch_exec(TestBench* tb) {
 uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
   uint32_t result = 0;
   if (addr >= FLASH_START && addr < FLASH_END-3) {
-    addr &= ~3;
     addr -= FLASH_START;
     result = 
       tb->vcpu_cpu->flash[addr+3] << 24 | tb->vcpu_cpu->flash[addr+2] << 16 |
@@ -342,7 +344,6 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
       byte <<  8 | byte <<  0 ;
   }
   else if (addr >= MEM_START && addr < MEM_END-3) {
-    addr &= ~3;
     addr -= MEM_START;
     result = 
       tb->vcpu_cpu->mem[addr+3] << 24 | tb->vcpu_cpu->mem[addr+2] << 16 |
@@ -377,7 +378,6 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
       }
     }
     else if (addr >= MEM_START && addr < MEM_END-3) {
-      addr &= ~3;
       addr -= MEM_START;
       if (wbmask & 0b0001) tb->vcpu_cpu->mem[addr + 0] = (wdata >>  0) & 0xff;
       if (wbmask & 0b0010) tb->vcpu_cpu->mem[addr + 1] = (wdata >>  8) & 0xff;
@@ -399,9 +399,12 @@ void vcpu_flash_init(TestBench* tb, uint8_t* data, uint32_t size) {
 
 void vcpu_tick(TestBench* tb) {
   tb->vcpu->eval();
+  if (tb->is_trace) {
+    tb->trace->dump(tb->trace_dumps++);
+  }
   tb->vcpu_ticks++;
   tb->vcpu_cycles = tb->vcpu_ticks / 2;
-  if (tb->is_cycles && tb->vcpu_cycles % 1'000'000 == 0) printf("[INFO] vcpu cycles: %lu\n", tb->vcpu_cycles);
+  if (tb->is_cycles && tb->vcpu_ticks % 2'000'000 == 0) printf("[INFO] vcpu cycles: %lu\n", tb->vcpu_cycles);
 
   tb->vcpu->clock ^= 1;
 }
@@ -430,25 +433,31 @@ void vcpu_reset(TestBench* tb) {
 
 void vcpu_fetch_exec(TestBench* tb) {
   while (1) {
-    vcpu_cycle(tb);
+    // eval
+    vcpu_tick(tb);
+    // NOTE: extra eval for respValid to happen on the same clock tick
+    tb->vcpu->eval();
+    if (tb->is_trace) {
+      tb->trace->dump(tb->trace_dumps++);
+    }
     tb->vcpu->io_ifu_respValid = 0;
     tb->vcpu->io_lsu_respValid = 0;
-
-    if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break;
-    if (tb->vcpu_cpu->ebreak) break;
-    if (tb->vcpu_cpu->is_inst_ret) break;
-
     if (tb->vcpu->io_ifu_reqValid) {
       tb->vcpu->io_ifu_respValid = 1;
       tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
     }
-    else {
-      if (tb->vcpu->io_lsu_reqValid) {
-        tb->vcpu->io_lsu_respValid = 1;
-        v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
-        tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
-      }
+    if (tb->vcpu->io_lsu_reqValid) {
+      tb->vcpu->io_lsu_respValid = 1;
+      v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
+      tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
     }
+    
+    // eval
+    vcpu_tick(tb);
+
+    if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break;
+    if (tb->vcpu_cpu->ebreak) break;
+    if (tb->vcpu_cpu->is_inst_ret) break;
   }
 }
 
@@ -648,7 +657,7 @@ bool test_instructions(TestBench* tb) {
 
     if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) {
       printf("[%x] pc=0x%08x inst: [0x%x] \n", tb->vcpu_cycles, tb->vcpu_cpu->pc);
-      printf("[FAILED] test is not successful: vsoc timeout %u/%u\n", tb->vcpu_cycles, tb->max_cycles);
+      printf("[FAILED] test is not successful: vcpu timeout %u/%u\n", tb->vcpu_cycles, tb->max_cycles);
       is_test_success=false;
       break;
     }

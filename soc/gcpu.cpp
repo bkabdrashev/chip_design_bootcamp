@@ -125,7 +125,6 @@ void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t
 uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
   uint32_t result = 0;
   if ((addr & 3) == 0 && addr >= FLASH_START && addr < FLASH_END-3) {
-    addr &= ~3;
     addr -= FLASH_START;
     result = 
       cpu->flash[addr+3] << 24 | cpu->flash[addr+2] << 16 |
