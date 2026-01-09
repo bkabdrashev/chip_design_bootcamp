@@ -56,6 +56,7 @@ module cpu (
   logic                   is_inst_ready;
 
   logic               is_lsu;
+  logic               is_lsu_read;
   logic [REG_W_END:0] lsu_rdata;
 
   logic [REG_W_END:0] csr_rdata;
@@ -151,17 +152,19 @@ module cpu (
   assign io_lsu_wen  = inst_type[5:3] == INST_STORE;
   assign io_lsu_size = inst_type[1:0];
 
+  assign is_lsu_read = ~io_lsu_wen;
   lsu u_lsu(
     .clock(clock),
     .reset(reset),
 
     .is_lsu     (is_lsu),
+    .is_read    (is_lsu_read),
     .is_busy    (is_lsu_busy),
     .rdata      (io_lsu_rdata),
     .wdata      (reg_rdata2),
     .addr       (alu_res),
     .data_size  (inst_type[1:0]),
-    .is_mem_sign(inst_type[2]),
+    .is_mem_sign(!inst_type[2]),
 
     .respValid    (io_lsu_respValid),
 

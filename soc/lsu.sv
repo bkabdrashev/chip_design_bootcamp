@@ -3,6 +3,7 @@ module lsu (
   input logic         reset,
 
   input               is_lsu,
+  input               is_read,
   input  logic [31:0] rdata,
   input  logic [31:0] wdata,
   input  logic [31:0] addr,
@@ -22,17 +23,21 @@ module lsu (
   localparam LSU_WORD = 2'b10;
   localparam LSU_EXTA = 2'b11;
 
+  logic [31:8] first_rdata;
+  logic [31:8] first_rdata_q;
   logic [31:0] align_rdata;
-  logic [1:0]  addr_offset     = addr[1:0];
-  logic        mem_byte_sign   = align_rdata[ 7] & is_mem_sign;
-  logic        mem_half_sign   = align_rdata[15] & is_mem_sign;
-  logic [23:0] mem_byte_extend = {24{mem_byte_sign}};
-  logic [15:0] mem_half_extend = {16{mem_half_sign}};
-  logic        is_misalign     = (addr_offset != 2'b00 && data_size == LSU_WORD) ||
-                                 (addr_offset == 2'b11 && data_size == LSU_HALF) ;;
+  logic [1:0]  addr_offset;
+  logic        mem_byte_sign;
+  logic        mem_half_sign;
+  logic [23:0] mem_byte_extend;
+  logic [15:0] mem_half_extend;
+  logic        is_misalign;
   logic        is_second_part;
-  assign       is_second_part  = next_state == LSU_WAIT_REQ || curr_state == LSU_WAIT_MIS || curr_state == LSU_WAIT_REQ;
+
+  assign       is_misalign     = (addr_offset != 2'b00 && data_size == LSU_WORD) ||
+                                 (addr_offset == 2'b11 && data_size == LSU_HALF) ;;
   assign       lsu_addr        = is_second_part ? {addr[31:2]+29'b1, 2'b00} : addr;
+  assign       addr_offset     = addr[1:0];
   assign       is_busy         = next_state != LSU_IDLE;
 
   always_comb begin
@@ -85,14 +90,38 @@ module lsu (
     endcase
   end
 
+  always_ff @(posedge clock or posedge reset) begin
+    if (reset) begin
+      first_rdata_q  <= 24'b0;
+    end begin
+      if (is_read && respValid) begin
+        first_rdata_q  <= rdata[31:8];
+      end
+    end
+  end
+  /*
+  |0123|4567|
+  lbu at 3
+  align to 0 and read
+  first <= |123|
+  align to 4 and read
+  rdata = |4567|
+  align_rdata = |3456|
+  */
+
   always_comb begin
     case (addr_offset)
       2'b00: align_rdata =  rdata[31:0];
-      2'b01: align_rdata = {rdata[ 7:0], rdata[31: 8]};
-      2'b10: align_rdata = {rdata[15:0], rdata[31:16]};
-      2'b11: align_rdata = {rdata[23:0], rdata[31:24]};
+      2'b01: align_rdata = {rdata[ 7:0], first_rdata[31: 8]};
+      2'b10: align_rdata = {rdata[15:0], first_rdata[31:16]};
+      2'b11: align_rdata = {rdata[23:0], first_rdata[31:24]};
     endcase
   end
+
+  assign mem_byte_sign   = align_rdata[ 7] & is_mem_sign;
+  assign mem_half_sign   = align_rdata[15] & is_mem_sign;
+  assign mem_byte_extend = {24{mem_byte_sign}};
+  assign mem_half_extend = {16{mem_half_sign}};
 
   always_comb begin
     case (data_size)
@@ -119,7 +148,9 @@ module lsu (
   end
 
   always_comb begin
-    reqValid = 1'b0;
+    reqValid       = 1'b0;
+    is_second_part = 1'b0;
+    first_rdata  = rdata[31:8];
     case (curr_state)
       LSU_IDLE: begin
         if (is_lsu) begin
@@ -129,19 +160,29 @@ module lsu (
         else next_state = LSU_IDLE;
       end
       LSU_WAIT_ONE: begin
-        if (respValid) next_state = LSU_IDLE;
-        else           next_state = LSU_WAIT_ONE;
+        if (respValid) begin
+          next_state   = LSU_IDLE;
+        end
+        else next_state = LSU_WAIT_ONE;
       end
       LSU_WAIT_MIS: begin
-        if (respValid) next_state = LSU_IDLE;
-        else           next_state = LSU_WAIT_MIS;
+        if (respValid) begin
+          next_state = LSU_IDLE;
+          first_rdata  = first_rdata_q;
+        end
+        else begin
+          is_second_part = 1'b1;
+          next_state = LSU_WAIT_MIS;
+        end
       end
       LSU_WAIT_REQ: begin
+        is_second_part = 1'b1;
         next_state = LSU_WAIT_MIS;
         reqValid   = 1'b1;
       end
       LSU_WAIT_TWO: begin
         if (respValid) begin
+          is_second_part = 1'b1;
           next_state = LSU_WAIT_REQ;
         end
         else next_state = LSU_WAIT_TWO;

@@ -156,7 +156,6 @@ uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
       byte <<  8 | byte <<  0 ;
   }
   else if (addr >= MEM_START && addr < MEM_END-3) {
-    addr &= ~3;
     addr -= MEM_START;
     result = 
       cpu->mem[addr+3] << 24 | cpu->mem[addr+2] << 16 |
@@ -191,7 +190,7 @@ uint32_t alu_eval(uint8_t op, uint32_t lhs, uint32_t rhs) {
     case ALU_OP_OR:   result = lhs | rhs;         break;
     case ALU_OP_SLL:  result = lhs << shamt;      break;
     case ALU_OP_SRL:  result = lhs >> shamt;      break;
-    case ALU_OP_SRA:  result = sar32(lhs, shamt); break;
+    case ALU_OP_SRA:  result = sra32(lhs, shamt); break;
     case ALU_OP_SLT:  result = slt(lhs, rhs);     break;
     case ALU_OP_SLTU: result = lhs < rhs;         break;
   }

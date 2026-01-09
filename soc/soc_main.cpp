@@ -715,8 +715,8 @@ bool test_random(TestBench* tb) {
     std::mt19937 gen(rand_device());
     gen.seed(seed);
     for (uint32_t rd = 1; rd < N_REGS; rd++) {
-      tb->insts[inst_count++] = lui(0x80800, 15);
-      tb->insts[inst_count++] = addi(random_bits(&gen, 12), 15, rd);
+      tb->insts[inst_count++] = lui(0x80800, rd);
+      tb->insts[inst_count++] = addi(random_bits(&gen, 12), rd, rd);
     }
     for (uint32_t i = 0; i < tb->n_insts - 2*(N_REGS-1); i++) {
       tb->insts[inst_count++] = random_instruction(&gen, tb->inst_flags);

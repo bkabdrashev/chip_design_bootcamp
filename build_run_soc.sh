@@ -31,7 +31,7 @@ make -C obj_cpu -f Vcpu.mk libVcpu.a \
   OPT_FAST="-O0 -g3 -fno-omit-frame-pointer" \
   OPT_SLOW="-O0 -g3 -fno-omit-frame-pointer" \
 && \
-make -C obj_soc -f VysyxSoCTop.mk libVysyxSoCTop.a libverilated.a \
+make -C obj_soc -f VysyxSoCTop.mk libVysyxSoCTop.a \
   OPT_FAST="-O0 -g3 -fno-omit-frame-pointer" \
   OPT_SLOW="-O0 -g3 -fno-omit-frame-pointer" \
 && \
@@ -41,7 +41,7 @@ g++ -std=c++17 -g \
   -I"$VERILATOR_ROOT/include/vltstd" \
   soc/soc_main.cpp\
   obj_soc/libVysyxSoCTop.a obj_cpu/libVcpu.a \
-  obj_soc/libverilated.a \
+  libverilated.a \
   -o bin/testbench \
 && \
 ./bin/testbench "$@"

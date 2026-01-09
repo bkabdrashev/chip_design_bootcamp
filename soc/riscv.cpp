@@ -57,7 +57,7 @@
 #define  InstFlag_Calc   (1 << 4)
 #define  InstFlag_System (1 << 5)
 
-int32_t sar32(uint32_t u, unsigned shift) {
+int32_t sra32(uint32_t u, unsigned shift) {
   assert(shift < 32);
 
   if (shift == 0) return (u & 0x80000000u) ? -int32_t((~u) + 1u) : int32_t(u);
@@ -352,7 +352,8 @@ void print_instruction(uint32_t inst) {
   InstInfo info = inst_info(inst);
   switch (info.opcode) {
     case OPCODE_LUI: {
-      printf("lui   imm=0x%x rd=%2u\n", info.u_imm, info.reg_dest);
+      uint32_t imm = info.u_imm >> 12;
+      printf("lui   imm=0x%x rd=%2u\n", imm, info.reg_dest);
     } break;
     case OPCODE_AUIPC: {
       printf("auipc imm=0x%x rd=%2u\n", info.u_imm, info.reg_dest);
