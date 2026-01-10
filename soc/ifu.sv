@@ -57,12 +57,12 @@ module ifu (
 
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
-reg [63:0]  dbg_ifu_state;
+reg [63:0]  dbg_ifu;
 
 always @ * begin
   case (curr_state)
-    IFU_IDLE   : dbg_ifu_state = "IFU_IDLE";
-    IFU_WAIT   : dbg_ifu_state = "IFU_WAIT";
+    IFU_IDLE   : dbg_ifu = "IFU_IDLE";
+    IFU_WAIT   : dbg_ifu = "IFU_WAIT";
   endcase
 end
 /* verilator lint_on UNUSEDSIGNAL */

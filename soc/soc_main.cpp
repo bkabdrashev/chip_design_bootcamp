@@ -334,6 +334,7 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
   uint32_t result = 0;
   if (addr >= FLASH_START && addr < FLASH_END-3) {
     addr -= FLASH_START;
+    addr &= ~3;
     result = 
       tb->vcpu_cpu->flash[addr+3] << 24 | tb->vcpu_cpu->flash[addr+2] << 16 |
       tb->vcpu_cpu->flash[addr+1] <<  8 | tb->vcpu_cpu->flash[addr+0] <<  0 ;
@@ -348,12 +349,13 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
   }
   else if (addr >= MEM_START && addr < MEM_END-3) {
     addr -= MEM_START;
+    addr &= ~3;
     result = 
       tb->vcpu_cpu->mem[addr+3] << 24 | tb->vcpu_cpu->mem[addr+2] << 16 |
       tb->vcpu_cpu->mem[addr+1] <<  8 | tb->vcpu_cpu->mem[addr+0] <<  0 ;
   }
   else {
-    printf("[WARNING]: mem read  memory is not mapped 0x%x\n", addr);
+    // printf("[WARNING]: mem read  memory is not mapped 0x%x\n", addr);
   }
   return result;
 }
@@ -362,7 +364,7 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
   if (wen) {
     if (addr >= FLASH_START && addr < FLASH_END-3) {
       // NOTE: flash is read only
-      printf("[WARNING]: attempt at writing flash, which is read only\n");
+      // printf("[WARNING]: attempt at writing flash, which is read only\n");
     }
     else if (addr >= UART_START && addr < UART_END-3) {
       addr -= UART_START;
@@ -382,13 +384,14 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
     }
     else if (addr >= MEM_START && addr < MEM_END-3) {
       addr -= MEM_START;
+      addr &= ~3;
       if (wbmask & 0b0001) tb->vcpu_cpu->mem[addr + 0] = (wdata >>  0) & 0xff;
       if (wbmask & 0b0010) tb->vcpu_cpu->mem[addr + 1] = (wdata >>  8) & 0xff;
       if (wbmask & 0b0100) tb->vcpu_cpu->mem[addr + 2] = (wdata >> 16) & 0xff;
       if (wbmask & 0b1000) tb->vcpu_cpu->mem[addr + 3] = (wdata >> 24) & 0xff;
     }
     else {
-      printf("[WARNING]: mem write memory is not mapped 0x%x\n", addr);
+      // printf("[WARNING]: mem write memory is not mapped 0x%x\n", addr);
     }
   }
 }
@@ -402,7 +405,6 @@ void vcpu_flash_init(TestBench* tb, uint8_t* data, uint32_t size) {
 
 void vcpu_tick(TestBench* tb) {
   tb->vcpu->eval();
-  printf("eval is_instret: %u\n", tb->vcpu_cpu->is_instret);
   if (tb->is_trace) {
     tb->trace->dump(tb->trace_dumps++);
   }
@@ -484,7 +486,6 @@ void vcpu_reset(TestBench* tb) {
 }
 
 BreakCode vcpu_fetch_exec(TestBench* tb) {
-  printf("==============fetch start %u ================\n", tb->vcpu_cycles);
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
     vcpu_tick(tb);
@@ -494,7 +495,6 @@ BreakCode vcpu_fetch_exec(TestBench* tb) {
     vcpu_tick(tb);
     break_code = vcpu_subtick(tb);
   }
-  printf("==============fetch end   %u ================\n", tb->vcpu_cycles);
   return break_code;
 }
 
@@ -627,7 +627,7 @@ bool test_instructions(TestBench* tb) {
         }
       }
       if (tb->gcpu->is_not_mapped) {
-        break;
+        // break;
       }
     }
     tb->instrets++;
@@ -761,8 +761,14 @@ bool test_random(TestBench* tb) {
     std::mt19937 gen(rand_device());
     gen.seed(seed);
     for (uint32_t rd = 1; rd < N_REGS; rd++) {
-      tb->insts[inst_count++] = lui(0x80800, rd);
-      tb->insts[inst_count++] = addi(random_bits(&gen, 12), rd, rd);
+      uint32_t mem_start_choice[3] = {UART_START >> 12, FLASH_START >> 12, MEM_START >> 12};
+      uint32_t mem_size_choice[3]  = {UART_SIZE, FLASH_SIZE, MEM_SIZE};
+      uint8_t  mem_rand            = random_range(&gen, 0, 3);
+      uint32_t start = mem_start_choice[mem_rand];
+      uint32_t size  = mem_size_choice[mem_rand];
+      uint32_t base  = start + (size >> 12) / 2;
+      tb->insts[inst_count++] = lui(base, rd);
+      tb->insts[inst_count++] = addi(random_bits(&gen, 12) % size + size / 2, rd, rd);
     }
     for (uint32_t i = 0; i < tb->n_insts - 2*(N_REGS-1); i++) {
       tb->insts[inst_count++] = random_instruction(&gen, tb->inst_flags);

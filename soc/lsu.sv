@@ -197,16 +197,16 @@ module lsu (
 
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
-reg [103:0]  dbg_lsu_state;
+reg [103:0]  dbg_lsu;
 
 always @ * begin
   case (curr_state)
-    LSU_IDLE     : dbg_lsu_state = "LSU_IDLE";
-    LSU_WAIT_ONE : dbg_lsu_state = "LSU_WAIT_ONE";
-    LSU_WAIT_MIS : dbg_lsu_state = "LSU_WAIT_MIS";
-    LSU_WAIT_REQ : dbg_lsu_state = "LSU_WAIT_REQ";
-    LSU_WAIT_TWO : dbg_lsu_state = "LSU_WAIT_TWO";
-    default      : dbg_lsu_state = "LSU_UNDEFINED";
+    LSU_IDLE     : dbg_lsu = "LSU_IDLE";
+    LSU_WAIT_ONE : dbg_lsu = "LSU_WAIT_ONE";
+    LSU_WAIT_MIS : dbg_lsu = "LSU_WAIT_MIS";
+    LSU_WAIT_REQ : dbg_lsu = "LSU_WAIT_REQ";
+    LSU_WAIT_TWO : dbg_lsu = "LSU_WAIT_TWO";
+    default      : dbg_lsu = "LSU_UNDEFINED";
   endcase
 end
 /* verilator lint_on UNUSEDSIGNAL */

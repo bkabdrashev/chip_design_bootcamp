@@ -19,11 +19,11 @@ module cpu (
 /*
               +---+        +---+          +---+
 start ------->|IFU|------->|IDU| -------> |LSU|
-              +---+<---+   +---+ <------- +---+
-                       |      |
-                     +---+    |
-                     |EXU|<---+
-                     +---+
+              +---+<---+   +---+          +---+
+                       |      |             |
+                     +---+    |             |
+                     |EXU|<---+             |
+                     +---+<-----------------+
 */
 
   import reg_defines::REG_A_END;
@@ -54,7 +54,9 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic [REG_W_END:0] rf_rdata2;
 
   logic [REG_W_END:0] ifu_inst;
+  /* verilator lint_off UNUSEDSIGNAL */
   logic               is_inst_retired;
+  /* verilator lint_on UNUSEDSIGNAL */
   logic               ifu_respValid;
   logic               ifu_reqValid;
 
@@ -73,6 +75,7 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic [REG_W_END:0] csr_rdata;
   logic [REG_W_END:0] csr_wdata;
   logic               csr_wen;
+  logic               ebreak;
 
   pc u_pc(
     .clock(clock),
@@ -165,7 +168,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     end else begin
       curr_state      <= next_state;
       is_inst_retired <= exu_respValid;
-      $display("is_retired: %d", is_inst_retired);
     end
   end
 
@@ -247,7 +249,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .imm      (idu_imm),
     .inst_type(idu_inst_type));
 
-  logic ebreak;
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       ebreak <= 1'b0;
@@ -261,43 +262,43 @@ start ------->|IFU|------->|IDU| -------> |LSU|
 
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
-reg [119:0] dbg_inst_type;
+reg [119:0] dbg_inst;
 always @ * begin
   case (idu_inst_type)
-    INST_EBREAK   : dbg_inst_type = "INST_EBREAK";
-    INST_CSR      : dbg_inst_type = "INST_CSR";
-    INST_CSRI     : dbg_inst_type = "INST_CSRI";
+    INST_EBREAK   : dbg_inst = "INST_EBREAK";
+    INST_CSR      : dbg_inst = "INST_CSR";
+    INST_CSRI     : dbg_inst = "INST_CSRI";
 
-    INST_LOAD_B  : dbg_inst_type = "INST_LOAD_B";
-    INST_LOAD_H  : dbg_inst_type = "INST_LOAD_H";
-    INST_LOAD_W  : dbg_inst_type = "INST_LOAD_W";
-    INST_LOAD_BU : dbg_inst_type = "INST_LOAD_BU";
-    INST_LOAD_HU : dbg_inst_type = "INST_LOAD_HU";
-    INST_STORE_B : dbg_inst_type = "INST_STORE_B";
-    INST_STORE_H : dbg_inst_type = "INST_STORE_H";
-    INST_STORE_W : dbg_inst_type = "INST_STORE_W";
+    INST_LOAD_B  : dbg_inst = "INST_LOAD_B";
+    INST_LOAD_H  : dbg_inst = "INST_LOAD_H";
+    INST_LOAD_W  : dbg_inst = "INST_LOAD_W";
+    INST_LOAD_BU : dbg_inst = "INST_LOAD_BU";
+    INST_LOAD_HU : dbg_inst = "INST_LOAD_HU";
+    INST_STORE_B : dbg_inst = "INST_STORE_B";
+    INST_STORE_H : dbg_inst = "INST_STORE_H";
+    INST_STORE_W : dbg_inst = "INST_STORE_W";
 
-    INST_BRANCH     : dbg_inst_type = "INST_BRANCH";
-    INST_IMM        : dbg_inst_type = "INST_IMM";
-    INST_REG        : dbg_inst_type = "INST_REG";
-    INST_UPP        : dbg_inst_type = "INST_UPP";
-    INST_JUMP       : dbg_inst_type = "INST_JUMP";
-    INST_JUMPR      : dbg_inst_type = "INST_JUMPR";
-    INST_AUIPC      : dbg_inst_type = "INST_AUIPC";
-    default         : dbg_inst_type = "INST_UNDEFINED";
+    INST_BRANCH     : dbg_inst = "INST_BRANCH";
+    INST_IMM        : dbg_inst = "INST_IMM";
+    INST_REG        : dbg_inst = "INST_REG";
+    INST_UPP        : dbg_inst = "INST_UPP";
+    INST_JUMP       : dbg_inst = "INST_JUMP";
+    INST_JUMPR      : dbg_inst = "INST_JUMPR";
+    INST_AUIPC      : dbg_inst = "INST_AUIPC";
+    default         : dbg_inst = "INST_UNDEFINED";
   endcase
 end
 
-reg [103:0]  dbg_cpu_state;
+reg [103:0]  dbg_cpu;
 always @ * begin
   case (curr_state)
-    CPU_RESET:     dbg_cpu_state = "CPU_RESET";
-    CPU_START:     dbg_cpu_state = "CPU_START";
-    CPU_STALL_IFU: dbg_cpu_state = "CPU_STALL_IFU";
-    CPU_STALL_LSU: dbg_cpu_state = "CPU_STALL_LSU";
-    CPU_EXEC:      dbg_cpu_state = "CPU_EXEC";
-    CPU_EBREAK:    dbg_cpu_state = "CPU_EBREAK";
-    default:       dbg_cpu_state = "CPU_NONE";
+    CPU_RESET:     dbg_cpu = "CPU_RESET";
+    CPU_START:     dbg_cpu = "CPU_START";
+    CPU_STALL_IFU: dbg_cpu = "CPU_STALL_IFU";
+    CPU_STALL_LSU: dbg_cpu = "CPU_STALL_LSU";
+    CPU_EXEC:      dbg_cpu = "CPU_EXEC";
+    CPU_EBREAK:    dbg_cpu = "CPU_EBREAK";
+    default:       dbg_cpu = "CPU_NONE";
   endcase
 end
 /* verilator lint_on UNUSEDSIGNAL */
