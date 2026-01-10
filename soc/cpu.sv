@@ -15,6 +15,11 @@ module cpu (
   output        io_lsu_wen,
   output [31:0] io_lsu_wdata,
   output [3:0]  io_lsu_wmask);
+
+`include "com_defines.vh"
+`include "reg_defines.vh"
+`include "alu_defines.vh"
+`include "inst_defines.vh"
               
 /*
               +---+        +---+          +---+
@@ -25,12 +30,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
                      |EXU|<---+             |
                      +---+<-----------------+
 */
-
-  import reg_defines::REG_A_END;
-  import reg_defines::REG_W_END;
-  import inst_defines::*;
-  import alu_defines::ALU_OP_END;
-  import com_defines::COM_OP_END;
 
   logic [REG_A_END:0]     idu_rd;
   logic [REG_A_END:0]     idu_rs1;

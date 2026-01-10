@@ -3,8 +3,9 @@ module alu (
   input  logic [REG_W_END:0]  lhs,
   input  logic [REG_W_END:0]  rhs,
   output logic [REG_W_END:0]  res);
-  import alu_defines::*;
-  import reg_defines::REG_W_END;
+
+`include "reg_defines.vh"
+`include "alu_defines.vh"
 
   logic [4:0] shamt;
 

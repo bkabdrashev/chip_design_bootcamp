@@ -12,7 +12,7 @@ module csr (
 /* verilator lint_on UNUSEDSIGNAL */
   output logic [REG_W_END:0] rdata);
 
-  import reg_defines::REG_W_END;
+`include "reg_defines.vh"
 
   localparam MCYCLE_ADDR    = 12'hB00; 
   localparam MCYCLEH_ADDR   = 12'hB80; 

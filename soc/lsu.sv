@@ -96,7 +96,8 @@ module lsu (
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       first_rdata_q  <= 24'b0;
-    end begin
+    end
+    else begin
       if (is_read && io_respValid) begin
         first_rdata_q  <= io_rdata[31:8];
       end

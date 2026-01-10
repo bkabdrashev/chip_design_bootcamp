@@ -4,8 +4,8 @@ module com (
   input  logic [REG_W_END:0]  rhs,
   output logic                res);
 
-  import com_defines::*;
-  import reg_defines::REG_W_END;
+`include "reg_defines.vh"
+`include "com_defines.vh"
 
   always_comb begin
     case (op)

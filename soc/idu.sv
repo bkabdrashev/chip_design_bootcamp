@@ -10,14 +10,10 @@ module idu (
   output logic [COM_OP_END:0]    com_op,
   output logic [INST_TYPE_END:0] inst_type);
 
-  import reg_defines::REG_W_END;
-  import reg_defines::REG_A_END;
-  import alu_defines::ALU_OP_END;
-  import alu_defines::ALU_OP_ADD;
-  import alu_defines::ALU_OP_RHS;
-  import com_defines::COM_OP_END;
-  import com_defines::COM_OP_ONE;
-  import inst_defines::*;
+  `include "com_defines.vh"
+  `include "reg_defines.vh"
+  `include "alu_defines.vh"
+  `include "inst_defines.vh"
 
   localparam FUNCT3_SR        = 3'b101;
   localparam FUNCT3_ADD       = 3'b000;

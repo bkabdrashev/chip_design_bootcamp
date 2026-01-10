@@ -32,6 +32,7 @@ module ifu (
     io_reqValid = 1'b0;
     respValid   = 1'b0;
     next_state  = curr_state;
+    io_addr     = 32'b0;
     case (curr_state)
       IFU_IDLE: begin
         if (reqValid) begin
