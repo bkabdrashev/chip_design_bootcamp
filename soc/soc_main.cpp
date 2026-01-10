@@ -455,14 +455,14 @@ BreakCode vcpu_subtick(TestBench* tb) {
   if (tb->vcpu_cpu->io_ifu_reqValid) {
     tb->vcpu_cpu->io_ifu_reqValid = 0;
     // BUG: doesn't work with wait == 1
-    vcpu_wait_ticks(tb, 4);
+    vcpu_wait_ticks(tb, 2);
     tb->vcpu->io_ifu_respValid = 1;
     tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
   }
   else if (tb->vcpu_cpu->io_lsu_reqValid) {
     tb->vcpu_cpu->io_lsu_reqValid = 0;
     // BUG: doesn't work with wait == 1
-    vcpu_wait_ticks(tb, 4);
+    vcpu_wait_ticks(tb, 2);
     tb->vcpu->io_lsu_respValid = 1;
     v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
     tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
