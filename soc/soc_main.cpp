@@ -21,7 +21,7 @@ typedef VysyxSoCTop VSoC;
 struct Vcpucpu {
   uint8_t & ebreak;
   uint32_t& pc;
-  uint8_t & is_inst_ret;
+  uint8_t & is_instret;
   uint64_t& mcycle;
   uint64_t& minstret;
   VlUnpacked<uint32_t, 16>&  regs;
@@ -29,6 +29,8 @@ struct Vcpucpu {
   uint8_t mem[MEM_SIZE];
   uint8_t flash[FLASH_SIZE];
   uint8_t uart[UART_SIZE];
+
+  uint8_t holdValid;
 };
 
 struct TestBenchConfig {
@@ -123,7 +125,7 @@ TestBench new_testbench(TestBenchConfig config) {
   tb.vsoc_cpu = new VSoCcpu{
     .ebreak      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__ebreak,
     .pc          = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__pc,
-    .is_inst_ret = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_inst_ret,
+    .is_instret  = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_inst_retired,
     .mcycle      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__minstret,
     .regs        = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_rf__DOT__regs,
@@ -150,7 +152,7 @@ TestBench new_testbench(TestBenchConfig config) {
   tb.vcpu_cpu = new Vcpucpu {
     .ebreak      = tb.vcpu->rootp->cpu__DOT__ebreak,
     .pc          = tb.vcpu->rootp->cpu__DOT__pc,
-    .is_inst_ret = tb.vcpu->rootp->cpu__DOT__is_inst_ret,
+    .is_instret  = tb.vcpu->rootp->cpu__DOT__is_inst_retired,
     .mcycle      = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__minstret,
     .regs        = tb.vcpu->rootp->cpu__DOT__u_rf__DOT__regs,
@@ -322,7 +324,7 @@ void vsoc_fetch_exec(TestBench* tb) {
     vsoc_cycle(tb);
     if (tb->max_cycles && tb->vsoc_cycles >= tb->max_cycles) break;
     if (tb->vsoc_cpu->ebreak) break;
-    if (tb->vsoc_cpu->is_inst_ret) break;
+    if (tb->vsoc_cpu->is_instret) break;
   }
 }
 
@@ -399,6 +401,7 @@ void vcpu_flash_init(TestBench* tb, uint8_t* data, uint32_t size) {
 
 void vcpu_tick(TestBench* tb) {
   tb->vcpu->eval();
+  printf("eval is_instret: %u\n", tb->vcpu_cpu->is_instret);
   if (tb->is_trace) {
     tb->trace->dump(tb->trace_dumps++);
   }
@@ -407,11 +410,50 @@ void vcpu_tick(TestBench* tb) {
   if (tb->is_cycles && tb->vcpu_ticks % 2'000'000 == 0) printf("[INFO] vcpu cycles: %lu\n", tb->vcpu_cycles);
 
   tb->vcpu->clock ^= 1;
+  tb->vcpu->eval();
+  if (tb->is_trace) {
+    tb->trace->dump(tb->trace_dumps++);
+  }
 }
 
 void vcpu_cycle(TestBench* tb) {
   vcpu_tick(tb);
   vcpu_tick(tb);
+}
+
+void vcpu_wait_ticks(TestBench* tb, uint64_t ticks) {
+  for (uint64_t i = 0; i < ticks; i++) {
+    vcpu_tick(tb);
+  }
+}
+
+enum BreakCode {
+  NoBreak,
+  Timeout,
+  Ebreak,
+  InstRet,
+};
+
+BreakCode vcpu_subtick(TestBench* tb) {
+  BreakCode break_code = NoBreak;
+  if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break_code = Timeout;
+  if (tb->vcpu_cpu->ebreak)                                break_code = Ebreak;
+  if (tb->vcpu_cpu->is_instret)                            break_code = InstRet;
+
+  if (tb->vcpu->io_ifu_reqValid) {
+    vcpu_wait_ticks(tb, 4);
+    tb->vcpu->io_ifu_respValid = 1;
+    tb->vcpu_cpu->holdValid = 1;
+    tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
+  }
+  else if (tb->vcpu->io_lsu_reqValid) {
+    vcpu_wait_ticks(tb, 4);
+    tb->vcpu->io_lsu_respValid = 1;
+    tb->vcpu_cpu->holdValid = 1;
+    v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
+    tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
+  }
+  return break_code;
 }
 
 void vcpu_reset(TestBench* tb) {
@@ -431,34 +473,23 @@ void vcpu_reset(TestBench* tb) {
   tb->vcpu_cpu->uart[5] = 0b0010'0000;
 }
 
-void vcpu_fetch_exec(TestBench* tb) {
+BreakCode vcpu_fetch_exec(TestBench* tb) {
+  printf("==============fetch start ================\n");
+  BreakCode break_code = NoBreak;
   while (1) {
-    // eval
     vcpu_tick(tb);
-    // NOTE: extra eval for respValid to happen on the same clock tick
-    tb->vcpu->eval();
-    if (tb->is_trace) {
-      tb->trace->dump(tb->trace_dumps++);
-    }
     tb->vcpu->io_ifu_respValid = 0;
     tb->vcpu->io_lsu_respValid = 0;
-    if (tb->vcpu->io_ifu_reqValid) {
-      tb->vcpu->io_ifu_respValid = 1;
-      tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
-    }
-    if (tb->vcpu->io_lsu_reqValid) {
-      tb->vcpu->io_lsu_respValid = 1;
-      v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
-      tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
-    }
-    
-    // eval
+    break_code = vcpu_subtick(tb);
     vcpu_tick(tb);
+    vcpu_subtick(tb);
 
-    if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break;
-    if (tb->vcpu_cpu->ebreak) break;
-    if (tb->vcpu_cpu->is_inst_ret) break;
+    if (break_code != NoBreak) {
+      printf("==============fetch end ================\n");
+      break;
+    }
   }
+  return break_code;
 }
 
 bool compare_reg(uint64_t sim_time, const char* name, uint32_t r, uint32_t g) {
@@ -593,6 +624,7 @@ bool test_instructions(TestBench* tb) {
         break;
       }
     }
+    tb->instrets++;
 
     if (tb->is_vsoc) {
       vsoc_fetch_exec(tb);
@@ -680,7 +712,6 @@ bool test_instructions(TestBench* tb) {
     if (tb->instrets > tb->n_insts) {
       break;
     }
-    tb->instrets++;
   }
   if (tb->is_vsoc) {
     printf("[INFO] vsoc finished:%u cycles, %u retired instructions\n", tb->vsoc_cycles, tb->vsoc_cpu->minstret);

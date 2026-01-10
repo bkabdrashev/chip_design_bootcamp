@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceFolder}/bin/testbench",
-            "args": ["random", "1", "1", "all", "vsoc", "gold", "vcpu"],
+            "args": ["random", "1", "1", "LS", "gold", "vcpu"],
             "cwd": "${workspaceFolder}"
         }
     ]

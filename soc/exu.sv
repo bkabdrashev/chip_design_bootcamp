@@ -9,6 +9,8 @@ module exu (
   input  logic [REG_W_END:0] pc_inc,
 
   output logic               is_pc_jump,
+  output logic               rf_wen,
+  output logic               csr_wen,
   output logic [REG_W_END:0] pc_jump,
   output logic [REG_W_END:0] rf_wdata,
   output logic [REG_W_END:0] csr_wdata,
@@ -20,11 +22,15 @@ module exu (
   input  logic [COM_OP_END:0]    com_op,
   input  logic [REG_W_END:0]     imm,
   input  logic [INST_TYPE_END:0] inst_type);
+
   import reg_defines::REG_A_END;
   import reg_defines::REG_W_END;
   import inst_defines::*;
   import alu_defines::ALU_OP_END;
   import com_defines::COM_OP_END;
+
+// NOTE: this is true, since all instructions done in EXU are 1 cycle, so 0 cycle stall
+  assign respValid = reqValid;
 
   logic [REG_W_END:0] alu_lhs;
   logic [REG_W_END:0] alu_rhs;
@@ -92,5 +98,8 @@ module exu (
 
   assign is_pc_jump = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
   assign pc_jump    = alu_res;
+
+  assign rf_wen     = inst_type[3] && respValid;
+  assign csr_wen    = inst_type[5] && respValid;
 
 endmodule

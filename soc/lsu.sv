@@ -144,7 +144,7 @@ module lsu (
     io_reqValid    = 1'b0;
     respValid      = 1'b0;
     is_second_part = 1'b0;
-    first_rdata    = rdata[31:8];
+    first_rdata    = io_rdata[31:8];
     case (curr_state)
       LSU_IDLE: begin
         if (reqValid) begin

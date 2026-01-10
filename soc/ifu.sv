@@ -13,7 +13,7 @@ module ifu (
   output logic [31:0] inst);
 
   typedef enum logic {
-    IDLE, WAIT
+    IFU_IDLE, IFU_WAIT
   } ifu_state;
 
   ifu_state next_state;
@@ -21,44 +21,52 @@ module ifu (
 
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
-      curr_state <= IDLE;
+      curr_state <= IFU_IDLE;
     end else begin
       curr_state <= next_state;
     end
   end
 
+  assign inst = io_rdata;
   always_comb begin
     io_reqValid = 1'b0;
     respValid   = 1'b0;
-    inst        = 32'b0;
     next_state  = curr_state;
     case (curr_state)
-      IDLE: begin
+      IFU_IDLE: begin
         if (reqValid) begin
           io_reqValid = 1'b1;
           io_addr     = pc;
-          next_state  = WAIT;
+          next_state  = IFU_WAIT;
         end
         else begin
-          next_state = IDLE;
+          next_state = IFU_IDLE;
         end
       end
-      WAIT: begin
+      IFU_WAIT: begin
         if (io_respValid) begin
-          inst          = io_rdata;
-          respValid     = 1'b1;
-          if (reqValid) begin
-            next_state = WAIT;
-            io_reqValid = 1'b1;
-          end
-          next_state    = IDLE;
+          respValid  = 1'b1;
+          next_state = IFU_IDLE;
         end
         else begin
-          next_state = WAIT;
+          next_state = IFU_WAIT;
         end
       end
     endcase
   end
+
+`ifdef verilator
+/* verilator lint_off UNUSEDSIGNAL */
+reg [63:0]  dbg_ifu_state;
+
+always @ * begin
+  case (curr_state)
+    IFU_IDLE   : dbg_ifu_state = "IFU_IDLE";
+    IFU_WAIT   : dbg_ifu_state = "IFU_WAIT";
+  endcase
+end
+/* verilator lint_on UNUSEDSIGNAL */
+`endif
 
 endmodule
 
