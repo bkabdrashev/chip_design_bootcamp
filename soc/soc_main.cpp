@@ -24,6 +24,7 @@ struct Vcpucpu {
   uint8_t & is_instret;
   uint64_t& mcycle;
   uint64_t& minstret;
+  uint64_t  minstret_start;
   VlUnpacked<uint32_t, 16>&  regs;
 
   uint8_t mem[MEM_SIZE];
@@ -32,6 +33,10 @@ struct Vcpucpu {
 
   uint8_t io_ifu_reqValid;
   uint8_t io_lsu_reqValid;
+  uint64_t io_ifu_respValid_ticks;
+  uint64_t io_lsu_respValid_ticks;
+  uint64_t io_ifu_waitRespValid;
+  uint64_t io_lsu_waitRespValid;
 };
 
 struct TestBenchConfig {
@@ -424,6 +429,22 @@ void vcpu_cycle(TestBench* tb) {
   vcpu_tick(tb);
 }
 
+void vcpu_reset(TestBench* tb) {
+  printf("[INFO] vcpu reset\n");
+  tb->vcpu->reset = 1;
+  tb->vcpu->clock = 0;
+  memset(tb->vcpu_cpu->uart, 0, UART_SIZE);
+  tb->vcpu_cpu->uart[1] = 0b0000'0000;
+  tb->vcpu_cpu->uart[2] = 0b1100'0000;
+  tb->vcpu_cpu->uart[3] = 0b0000'0011;
+  tb->vcpu_cpu->uart[4] = 0b0000'0000;
+  tb->vcpu_cpu->uart[5] = 0b0010'0000;
+  for (uint64_t i = 0; i < tb->reset_cycles; i++) {
+    vcpu_cycle(tb);
+  }
+  tb->vcpu->reset = 0;
+}
+
 void vcpu_wait_ticks(TestBench* tb, uint64_t ticks) {
   for (uint64_t i = 0; i < ticks; i++) {
     vcpu_tick(tb);
@@ -437,66 +458,72 @@ enum BreakCode {
   InstRet,
 };
 
-BreakCode vcpu_subtick(TestBench* tb) {
+BreakCode vcpu_break_code(TestBench* tb) {
   BreakCode break_code = NoBreak;
-  if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles) break_code = Timeout;
-  if (tb->vcpu_cpu->ebreak)                                break_code = Ebreak;
-  if (tb->vcpu_cpu->is_instret)                            break_code = InstRet;
+  if (tb->max_cycles && tb->vcpu_cycles >= tb->max_cycles)    break_code = Timeout;
+  if (tb->vcpu_cpu->ebreak)                                   break_code = Ebreak;
+  if (tb->vcpu_cpu->minstret != tb->vcpu_cpu->minstret_start) break_code = InstRet;
+  return break_code;
+}
 
-  if (tb->vcpu->io_ifu_reqValid) {
-    tb->vcpu_cpu->io_ifu_reqValid = 1;
+BreakCode vcpu_subtick(TestBench* tb) {
+  BreakCode break_code = vcpu_break_code(tb);
+  if (tb->vcpu_cpu->io_ifu_respValid_ticks > 0) {
+    tb->vcpu_cpu->io_ifu_respValid_ticks--;
   }
-  if (tb->vcpu->io_lsu_reqValid) {
-    tb->vcpu_cpu->io_lsu_reqValid = 1;
+  if (tb->vcpu_cpu->io_ifu_respValid_ticks == 0) {
+    tb->vcpu->io_ifu_respValid = 0;
+    if (tb->vcpu->io_ifu_reqValid) {
+      tb->vcpu->io_ifu_respValid = 0;
+      tb->vcpu_cpu->io_ifu_reqValid = 1;
+      tb->vcpu_cpu->io_ifu_waitRespValid = 2;
+    }
   }
-
-  if (break_code != NoBreak) return break_code;
-
-  if (tb->vcpu_cpu->io_ifu_reqValid) {
-    tb->vcpu_cpu->io_ifu_reqValid = 0;
-    // BUG: doesn't work with wait == 1
-    vcpu_wait_ticks(tb, 2);
+  if (tb->vcpu_cpu->io_ifu_waitRespValid > 0) {
+    tb->vcpu_cpu->io_ifu_waitRespValid--;
+  }
+  if (tb->vcpu_cpu->io_ifu_reqValid && tb->vcpu_cpu->io_ifu_waitRespValid == 0) {
     tb->vcpu->io_ifu_respValid = 1;
+    tb->vcpu_cpu->io_ifu_reqValid = 0;
+    tb->vcpu_cpu->io_ifu_respValid_ticks = 2;
     tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
   }
-  else if (tb->vcpu_cpu->io_lsu_reqValid) {
-    tb->vcpu_cpu->io_lsu_reqValid = 0;
-    // BUG: doesn't work with wait == 1
-    vcpu_wait_ticks(tb, 2);
+
+  if (tb->vcpu_cpu->io_lsu_respValid_ticks > 0) {
+    tb->vcpu_cpu->io_lsu_respValid_ticks--;
+  }
+  if (tb->vcpu_cpu->io_lsu_respValid_ticks == 0) {
+    tb->vcpu->io_lsu_respValid = 0;
+    if (tb->vcpu->io_lsu_reqValid) {
+      tb->vcpu->io_lsu_respValid = 0;
+      tb->vcpu_cpu->io_lsu_reqValid = 1;
+      tb->vcpu_cpu->io_lsu_waitRespValid = 2;
+    }
+  }
+  if (tb->vcpu_cpu->io_lsu_waitRespValid > 0) {
+    tb->vcpu_cpu->io_lsu_waitRespValid--;
+  }
+  if (tb->vcpu_cpu->io_lsu_reqValid && tb->vcpu_cpu->io_lsu_waitRespValid == 0) {
     tb->vcpu->io_lsu_respValid = 1;
+    tb->vcpu_cpu->io_lsu_reqValid = 0;
+    tb->vcpu_cpu->io_lsu_respValid_ticks = 2;
     v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
     tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
   }
   return break_code;
 }
 
-void vcpu_reset(TestBench* tb) {
-  printf("[INFO] vcpu reset\n");
-  tb->vcpu->reset = 1;
-  tb->vcpu->clock = 0;
-  for (uint64_t i = 0; i < tb->reset_cycles; i++) {
-    vcpu_cycle(tb);
-  }
-  tb->vcpu->reset = 0;
-
-  memset(tb->vcpu_cpu->uart, 0, UART_SIZE);
-  tb->vcpu_cpu->uart[1] = 0b0000'0000;
-  tb->vcpu_cpu->uart[2] = 0b1100'0000;
-  tb->vcpu_cpu->uart[3] = 0b0000'0011;
-  tb->vcpu_cpu->uart[4] = 0b0000'0000;
-  tb->vcpu_cpu->uart[5] = 0b0010'0000;
-}
-
 BreakCode vcpu_fetch_exec(TestBench* tb) {
+  printf("============== fetch start %u tick =================\n", tb->vcpu_ticks);
+  tb->vcpu_cpu->minstret_start = tb->vcpu_cpu->minstret;
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
     vcpu_tick(tb);
-    tb->vcpu->io_ifu_respValid = 0;
-    tb->vcpu->io_lsu_respValid = 0;
     vcpu_subtick(tb);
     vcpu_tick(tb);
     break_code = vcpu_subtick(tb);
   }
+  printf("============== fetch end   %u tick =================\n", tb->vcpu_ticks);
   return break_code;
 }
 

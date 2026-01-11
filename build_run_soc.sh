@@ -2,8 +2,6 @@
 export VERILATOR_ROOT=/usr/share/verilator
 RTL_ROOT=/home/bekzat/chip_bootcamp/
 
-# OPT_FAST="-O0 -g3 -fno-omit-frame-pointer" \
-# OPT_SLOW="-O0 -g3 -fno-omit-frame-pointer" \
 DBG_CFLAGS="-g3 -O0 -fno-omit-frame-pointer"
 DBG_LDFLAGS="-g"
 
@@ -31,8 +29,12 @@ verilator --trace -cc \
   --Mdir obj_soc \
 && \
 make -C obj_cpu -f Vcpu.mk libVcpu.a \
+OPT_FAST="-O0 -g3 -fno-omit-frame-pointer" \
+OPT_SLOW="-O0 -g3 -fno-omit-frame-pointer" \
 && \
 make -C obj_soc -f VysyxSoCTop.mk libVysyxSoCTop.a \
+OPT_FAST="-O0 -g3 -fno-omit-frame-pointer" \
+OPT_SLOW="-O0 -g3 -fno-omit-frame-pointer" \
 && \
 g++ -std=c++17 -g \
   -Iobj_cpu -Iobj_soc \

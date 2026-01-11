@@ -1,6 +1,13 @@
 module exu (
+  input  logic               clock,
+  input  logic               reset,
   input  logic               reqValid,
   output logic               respValid,
+
+  input  logic               lsu_respValid,
+  input  logic               is_lsu_inst,
+  output logic               is_inst_retired,
+
   input  logic [REG_W_END:0] lsu_rdata,
   input  logic [REG_W_END:0] csr_rdata,
   input  logic [REG_W_END:0] rdata1,
@@ -30,8 +37,65 @@ module exu (
 `include "inst_defines.vh"
 /* verilator lint_on UNUSEDPARAM */
 
-// NOTE: this is true, since all instructions done in EXU are 1 cycle, so 0 cycle stall
-  assign respValid = reqValid;
+  typedef enum logic [2:0] { EXU_START, EXU_RESET, EXU_EXECUTE, EXU_STALL_IDU, EXU_STALL_LSU } cpu_state;
+
+  cpu_state next_state;
+  cpu_state curr_state;
+  cpu_state lsu_or_exec;
+
+  always_ff @(posedge clock or posedge reset) begin
+    if (reset) begin
+      curr_state <= EXU_RESET;
+      is_inst_retired <= 1'b0;
+    end else begin
+      curr_state <= next_state;
+      is_inst_retired <= reqValid;
+    end
+  end
+
+  assign lsu_or_exec = is_lsu_inst && ~lsu_respValid ? EXU_STALL_LSU : EXU_EXECUTE;
+
+  always_comb begin
+    respValid    = 1'b0;
+    next_state = curr_state;
+    unique case (curr_state)
+      EXU_RESET: begin
+        next_state = EXU_START;
+      end
+      EXU_START: begin
+        next_state = EXU_STALL_IDU;
+        if (reqValid) begin
+          next_state = lsu_or_exec;
+          respValid  = ~is_lsu_inst;
+        end
+      end
+      EXU_STALL_IDU: begin
+        if (reqValid) begin
+          next_state = lsu_or_exec;
+          respValid  = ~is_lsu_inst;
+        end
+        else begin
+          next_state = EXU_STALL_IDU;
+        end
+      end
+      EXU_STALL_LSU: begin
+        if (lsu_respValid) begin
+          next_state = EXU_EXECUTE;
+        end
+        else begin
+          next_state = EXU_STALL_LSU;
+        end
+      end
+      EXU_EXECUTE: begin
+        respValid  = 1'b1;
+        next_state = EXU_STALL_IDU;
+        if (reqValid) begin
+          next_state = lsu_or_exec;
+          respValid  = ~is_lsu_inst;
+        end
+      end
+    endcase
+  end
 
   logic [REG_W_END:0] alu_lhs;
   logic [REG_W_END:0] alu_rhs;
@@ -103,4 +167,19 @@ module exu (
   assign rf_wen     = inst_type[3] && respValid;
   assign csr_wen    = inst_type[5] && respValid;
 
+`ifdef verilator
+/* verilator lint_off UNUSEDSIGNAL */
+reg [103:0]  dbg_exu;
+always @ * begin
+  case (curr_state)
+    EXU_RESET:     dbg_exu = "EXU_RESET";
+    EXU_START:     dbg_exu = "EXU_START";
+    EXU_STALL_IDU: dbg_exu = "EXU_STALL_IDU";
+    EXU_STALL_LSU: dbg_exu = "EXU_STALL_LSU";
+    EXU_EXECUTE:   dbg_exu = "EXU_EXECUTE";
+    default:       dbg_exu = "EXU_NONE";
+  endcase
+end
+/* verilator lint_on UNUSEDSIGNAL */
+`endif
 endmodule

@@ -61,11 +61,13 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic               ifu_respValid;
   logic               ifu_reqValid;
 
+  logic               idu_respValid;
+  logic               idu_reqValid;
   logic               exu_respValid;
   logic               exu_reqValid;
 
-  logic               is_load_or_store;
-  logic               is_load;
+  logic               is_lsu_inst;
+  logic               is_store;
 
   logic [REG_W_END:0] lsu_rdata;
   logic [REG_W_END:0] lsu_wdata;
@@ -88,19 +90,23 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   ifu u_ifu(
     .clock(clock),
     .reset(reset),
+    .respValid   (ifu_respValid),
+    .reqValid    (ifu_reqValid),
 
     .io_respValid(io_ifu_respValid),
     .io_reqValid (io_ifu_reqValid),
     .io_addr     (io_ifu_addr),
     .io_rdata    (io_ifu_rdata),
 
-    .pc          (pc_next),
-    .respValid   (ifu_respValid),
-    .reqValid    (ifu_reqValid),
+    .pc          (pc),
     .inst        (ifu_inst));
 
+  assign idu_reqValid = ifu_respValid;
   idu u_idu(
-    .inst(ifu_inst),
+    .respValid(idu_respValid),
+    .reqValid (idu_reqValid),
+
+    .inst     (ifu_inst),
 
     .rd       (idu_rd),
     .rs1      (idu_rs1),
@@ -109,9 +115,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .com_op   (idu_com_op),
     .imm      (idu_imm),
     .inst_type(idu_inst_type));
-
-  assign is_load_or_store = idu_inst_type[4];
-  assign is_load          = idu_inst_type[5:3] == INST_LOAD;
 
   rf u_rf(
     .clock(clock),
@@ -135,13 +138,17 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .wdata     (csr_wdata),
     .rdata     (csr_rdata));
 
+  assign is_lsu_inst = idu_inst_type[4];
+  assign is_store    = idu_inst_type[5:3] == INST_STORE;
+
+  assign lsu_reqValid = idu_respValid && is_lsu_inst;
   lsu u_lsu(
     .clock(clock),
     .reset(reset),
 
     .reqValid     (lsu_reqValid),
     .respValid    (lsu_respValid),
-    .is_read      (is_load),
+    .is_write     (is_store),
     .wdata        (lsu_wdata),
     .rdata        (lsu_rdata),
     .addr         (lsu_addr),
@@ -157,77 +164,25 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .io_wen       (io_lsu_wen),
     .io_wmask     (io_lsu_wmask));
 
-  typedef enum logic [2:0] { CPU_RESET, CPU_START, CPU_STALL_IFU, CPU_STALL_LSU, CPU_EXEC, CPU_EBREAK } cpu_state;
-
-  cpu_state next_state;
-  cpu_state curr_state;
-
-  always_ff @(posedge clock or posedge reset) begin
-    if (reset) begin
-      curr_state      <= CPU_RESET;
-      is_inst_retired <= 1'b0;
-    end else begin
-      curr_state      <= next_state;
-      is_inst_retired <= exu_respValid;
-    end
-  end
-
   assign pc_wen = exu_respValid;
   assign pc_inc = pc + 4;
   always_comb begin
     pc_next = pc_inc;
-    if (!exu_respValid)  pc_next = pc;
-    else if (is_pc_jump) pc_next = pc_jump;
+    // if (!exu_respValid)  pc_next = pc;
+    if (is_pc_jump) pc_next = pc_jump;
   end
 
-  always_comb begin
-    ifu_reqValid = 1'b0;
-    lsu_reqValid = 1'b0;
-    exu_reqValid = 1'b0;
-    case (curr_state)
-      CPU_RESET: begin
-        next_state = CPU_START;
-      end
-      CPU_START: begin
-        next_state   = CPU_STALL_IFU;
-        ifu_reqValid = 1'b1;
-      end
-      CPU_STALL_IFU: begin
-        next_state = CPU_STALL_IFU;
-        if (ifu_respValid) begin
-          if (is_load_or_store) begin
-            next_state   = CPU_STALL_LSU;
-            lsu_reqValid = 1'b1;
-          end
-          else begin
-            next_state   = CPU_EXEC;
-            exu_reqValid = 1'b1;
-          end
-        end
-      end
-      CPU_STALL_LSU: begin
-        next_state = CPU_STALL_LSU;
-        if (lsu_respValid) begin
-          next_state   = CPU_EXEC;
-          exu_reqValid = 1'b1;
-        end
-      end
-      CPU_EXEC: begin
-        next_state = CPU_STALL_IFU;
-        ifu_reqValid = 1'b1;
-        if (ebreak) begin
-          ifu_reqValid = 1'b0;
-          next_state = CPU_EBREAK;
-        end
-      end
-      CPU_EBREAK: next_state = CPU_EBREAK;
-      default: next_state = curr_state;
-    endcase
-  end
-
+  assign exu_reqValid = idu_respValid;
   exu u_exu(
-    .reqValid (exu_reqValid),
-    .respValid(exu_respValid),
+    .clock(clock),
+    .reset(reset),
+    .reqValid       (exu_reqValid),
+    .respValid      (exu_respValid),
+
+    .lsu_respValid  (lsu_respValid),
+    .is_lsu_inst    (is_lsu_inst),
+    .is_inst_retired(is_inst_retired),
+
     .lsu_rdata(lsu_rdata),
     .csr_rdata(csr_rdata),
     .rdata1   (rf_rdata1),
@@ -253,12 +208,11 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       ebreak <= 1'b0;
+      ifu_reqValid <= 1'b0;
     end else begin
       ebreak <= idu_inst_type == INST_EBREAK || ebreak;
+      ifu_reqValid <= 1'b1;
     end
-  end
-
-  always_comb begin
   end
 
 `ifdef verilator
@@ -290,18 +244,6 @@ always @ * begin
   endcase
 end
 
-reg [103:0]  dbg_cpu;
-always @ * begin
-  case (curr_state)
-    CPU_RESET:     dbg_cpu = "CPU_RESET";
-    CPU_START:     dbg_cpu = "CPU_START";
-    CPU_STALL_IFU: dbg_cpu = "CPU_STALL_IFU";
-    CPU_STALL_LSU: dbg_cpu = "CPU_STALL_LSU";
-    CPU_EXEC:      dbg_cpu = "CPU_EXEC";
-    CPU_EBREAK:    dbg_cpu = "CPU_EBREAK";
-    default:       dbg_cpu = "CPU_NONE";
-  endcase
-end
 /* verilator lint_on UNUSEDSIGNAL */
 `endif
 

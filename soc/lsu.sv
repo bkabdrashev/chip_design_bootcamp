@@ -4,7 +4,7 @@ module lsu (
 
   input               reqValid,
   output              respValid,
-  input               is_read,
+  input               is_write,
   input  logic [31:0] wdata,
   input  logic [31:0] addr,
   input  logic [1:0]  data_size,
@@ -35,13 +35,15 @@ module lsu (
   logic [15:0] mem_half_extend;
   logic        is_misalign;
   logic        is_second_part;
+  logic        is_read;
 
   assign is_misalign = (addr_offset != 2'b00 && data_size == LSU_WORD) ||
                        (addr_offset == 2'b11 && data_size == LSU_HALF) ;;
   assign addr_offset = addr[1:0];
   assign io_addr     = is_second_part ? {addr[31:2]+29'b1, 2'b00} : addr;
   assign io_size     = data_size;
-  assign io_wen      = ~is_read;
+  assign io_wen      = is_write;
+  assign is_read     = ~is_write;
 
   always_comb begin
     case (addr_offset)
@@ -126,8 +128,8 @@ module lsu (
     endcase
   end
 
-  typedef enum logic [2:0] {
-    LSU_IDLE, LSU_WAIT_ONE, LSU_WAIT_MIS, LSU_WAIT_REQ, LSU_WAIT_TWO
+  typedef enum logic [1:0] {
+    LSU_IDLE, LSU_WAIT_ONE, LSU_WAIT_MIS_ONE, LSU_WAIT_MIS_TWO
   } lsu_state;
 
   lsu_state next_state;
@@ -149,8 +151,13 @@ module lsu (
     case (curr_state)
       LSU_IDLE: begin
         if (reqValid) begin
-          next_state  = is_misalign ? LSU_WAIT_TWO : LSU_WAIT_ONE;
           io_reqValid = 1'b1;
+          if (io_respValid) begin
+            next_state = is_misalign ? LSU_WAIT_MIS_TWO : LSU_IDLE;
+          end
+          else begin
+            next_state = is_misalign ? LSU_WAIT_MIS_ONE : LSU_WAIT_ONE;
+          end
         end
         else begin
           next_state = LSU_IDLE;
@@ -165,7 +172,7 @@ module lsu (
           next_state = LSU_WAIT_ONE;
         end
       end
-      LSU_WAIT_MIS: begin
+      LSU_WAIT_MIS_TWO: begin
         if (io_respValid) begin
           next_state  = LSU_IDLE;
           first_rdata = first_rdata_q;
@@ -173,21 +180,17 @@ module lsu (
         end
         else begin
           is_second_part = 1'b1;
-          next_state     = LSU_WAIT_MIS;
+          next_state     = LSU_WAIT_MIS_TWO;
         end
       end
-      LSU_WAIT_REQ: begin
-        is_second_part = 1'b1;
-        next_state     = LSU_WAIT_MIS;
-        io_reqValid    = 1'b1;
-      end
-      LSU_WAIT_TWO: begin
+      LSU_WAIT_MIS_ONE: begin
         if (io_respValid) begin
           is_second_part = 1'b1;
-          next_state     = LSU_WAIT_REQ;
+          io_reqValid    = 1'b1;
+          next_state     = LSU_WAIT_MIS_TWO;
         end
         else begin
-          next_state = LSU_WAIT_TWO;
+          next_state = LSU_WAIT_MIS_ONE;
         end
       end
       default: begin
@@ -198,16 +201,15 @@ module lsu (
 
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
-reg [103:0]  dbg_lsu;
+reg [127:0]  dbg_lsu;
 
 always @ * begin
   case (curr_state)
-    LSU_IDLE     : dbg_lsu = "LSU_IDLE";
-    LSU_WAIT_ONE : dbg_lsu = "LSU_WAIT_ONE";
-    LSU_WAIT_MIS : dbg_lsu = "LSU_WAIT_MIS";
-    LSU_WAIT_REQ : dbg_lsu = "LSU_WAIT_REQ";
-    LSU_WAIT_TWO : dbg_lsu = "LSU_WAIT_TWO";
-    default      : dbg_lsu = "LSU_UNDEFINED";
+    LSU_IDLE         : dbg_lsu = "LSU_IDLE";
+    LSU_WAIT_ONE     : dbg_lsu = "LSU_WAIT_ONE";
+    LSU_WAIT_MIS_ONE : dbg_lsu = "LSU_WAIT_MIS_ONE";
+    LSU_WAIT_MIS_TWO : dbg_lsu = "LSU_WAIT_MIS_TWO";
+    default          : dbg_lsu = "LSU_UNDEFINED";
   endcase
 end
 /* verilator lint_on UNUSEDSIGNAL */

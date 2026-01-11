@@ -1,4 +1,7 @@
 module idu (
+  input  logic                   reqValid,
+  output logic                   respValid,
+
   input  logic [REG_W_END:0]     inst,
 
   output logic [REG_A_END:0]     rd,
@@ -16,6 +19,8 @@ module idu (
   `include "alu_defines.vh"
   `include "inst_defines.vh"
 /* verilator lint_on UNUSEDPARAM */
+
+  assign respValid = reqValid;
 
   localparam FUNCT3_SR        = 3'b101;
   localparam FUNCT3_ADD       = 3'b000;

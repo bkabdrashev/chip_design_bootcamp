@@ -1,12 +1,12 @@
 module ifu (
   input  logic  clock,
   input  logic  reset,
-// IO messages
+
   input  logic        io_respValid,
   input  logic [31:0] io_rdata,
   output logic [31:0] io_addr,
   output logic        io_reqValid,
-// EXU/Pipeline messages
+
   input  logic [31:0] pc,
   input  logic        reqValid,
   output logic        respValid,
@@ -32,13 +32,16 @@ module ifu (
     io_reqValid = 1'b0;
     respValid   = 1'b0;
     next_state  = curr_state;
-    io_addr     = 32'b0;
+    io_addr     = pc;
     case (curr_state)
       IFU_IDLE: begin
         if (reqValid) begin
           io_reqValid = 1'b1;
-          io_addr     = pc;
           next_state  = IFU_WAIT;
+          if (io_respValid) begin
+            respValid  = 1'b1;
+            next_state = IFU_IDLE;
+          end
         end
         else begin
           next_state = IFU_IDLE;
