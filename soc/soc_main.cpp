@@ -484,20 +484,18 @@ BreakCode vcpu_break_code(TestBench* tb) {
   return break_code;
 }
 
-BreakCode vcpu_subtick(TestBench* tb) {
-  BreakCode break_code = vcpu_break_code(tb);
+void vcpu_subtick(TestBench* tb) {
   if (tb->vcpu_cpu->io_ifu_respValid_ticks > 0) {
     tb->vcpu_cpu->io_ifu_respValid_ticks--;
   }
   if (tb->vcpu_cpu->io_ifu_respValid_ticks == 0) {
     tb->vcpu->io_ifu_respValid = 0;
-    if (tb->vcpu->io_ifu_reqValid) {
-      tb->vcpu->io_ifu_respValid = 0;
-      tb->vcpu_cpu->io_ifu_reqValid = tb->vcpu->io_ifu_reqValid;
-      tb->vcpu_cpu->io_ifu_addr     = tb->vcpu->io_ifu_addr;
-      uint64_t delay_ticks = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
-      tb->vcpu_cpu->io_ifu_waitRespValid = delay_ticks;
-    }
+  }
+  if (tb->vcpu->io_ifu_reqValid && !tb->vcpu_cpu->io_ifu_reqValid) {
+    tb->vcpu_cpu->io_ifu_reqValid = tb->vcpu->io_ifu_reqValid;
+    tb->vcpu_cpu->io_ifu_addr     = tb->vcpu->io_ifu_addr;
+    uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+    tb->vcpu_cpu->io_ifu_waitRespValid = delay_ticks;
   }
   if (tb->vcpu_cpu->io_ifu_waitRespValid > 0) {
     tb->vcpu_cpu->io_ifu_waitRespValid--;
@@ -514,16 +512,15 @@ BreakCode vcpu_subtick(TestBench* tb) {
   }
   if (tb->vcpu_cpu->io_lsu_respValid_ticks == 0) {
     tb->vcpu->io_lsu_respValid = 0;
-    if (tb->vcpu->io_lsu_reqValid) {
-      tb->vcpu->io_lsu_respValid = 0;
-      tb->vcpu_cpu->io_lsu_reqValid = tb->vcpu->io_lsu_reqValid;
-      tb->vcpu_cpu->io_lsu_addr     = tb->vcpu->io_lsu_addr;
-      tb->vcpu_cpu->io_lsu_wdata    = tb->vcpu->io_lsu_wdata;
-      tb->vcpu_cpu->io_lsu_wmask    = tb->vcpu->io_lsu_wmask;
-      tb->vcpu_cpu->io_lsu_wen      = tb->vcpu->io_lsu_wen;
-      uint64_t delay_ticks = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
-      tb->vcpu_cpu->io_lsu_waitRespValid = delay_ticks;
-    }
+  }
+  if (tb->vcpu->io_lsu_reqValid && !tb->vcpu_cpu->io_lsu_reqValid) {
+    tb->vcpu_cpu->io_lsu_reqValid = tb->vcpu->io_lsu_reqValid;
+    tb->vcpu_cpu->io_lsu_addr     = tb->vcpu->io_lsu_addr;
+    tb->vcpu_cpu->io_lsu_wdata    = tb->vcpu->io_lsu_wdata;
+    tb->vcpu_cpu->io_lsu_wmask    = tb->vcpu->io_lsu_wmask;
+    tb->vcpu_cpu->io_lsu_wen      = tb->vcpu->io_lsu_wen;
+    uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+    tb->vcpu_cpu->io_lsu_waitRespValid = delay_ticks;
   }
   if (tb->vcpu_cpu->io_lsu_waitRespValid > 0) {
     tb->vcpu_cpu->io_lsu_waitRespValid--;
@@ -535,7 +532,6 @@ BreakCode vcpu_subtick(TestBench* tb) {
     v_mem_write(tb, tb->vcpu_cpu->io_lsu_wen, tb->vcpu_cpu->io_lsu_wmask, tb->vcpu_cpu->io_lsu_addr, tb->vcpu_cpu->io_lsu_wdata);
     tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu_cpu->io_lsu_addr);
   }
-  return break_code;
 }
 
 BreakCode vcpu_fetch_exec(TestBench* tb) {
@@ -546,7 +542,8 @@ BreakCode vcpu_fetch_exec(TestBench* tb) {
     vcpu_tick(tb);
     vcpu_subtick(tb);
     vcpu_tick(tb);
-    break_code = vcpu_subtick(tb);
+    vcpu_subtick(tb);
+    break_code = vcpu_break_code(tb);
   }
   // printf("============== fetch end   %u tick =================\n", tb->vcpu_ticks);
   return break_code;

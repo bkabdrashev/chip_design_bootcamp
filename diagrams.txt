@@ -11,12 +11,6 @@ ifu respValid
    x Valid x Valid x Valid x Valid x
 --/ \--1--/ \--2--/ \--3--/ \--4--/ \--
 
-idu respValid
---\ /-----\ /-----\ /-----\ /-----\ /--
-   x       x Valid x Valid x Valid x
---/ \-----/ \--1--/ \--2--/ \--3--/ \--
-
-
 exe respValid
 --\ /-----\ /-----\ /-----\ /-----\ /--
    x       x Valid x Valid x Valid x
@@ -31,24 +25,14 @@ ifu reqValid
    x Valid x       x       x       x
 --/ \-----/ \-----/ \-----/ \-----/ \--
 
-ifu respValid
---\ /-----\ /-----\ /-----\ /-----\ /--
-   x       x Valid x       x       x
---/ \-----/ \-----/ \-----/ \-----/ \--
-
-inst type
---\ /-----\ /-----\ /-----\ /-----\ /--
-   x       x Load  x Load  x Load  x
---/ \-----/ \-----/ \-----/ \-----/ \--
-
 lsu reqValid
 --\ /-----\ /-----\ /-----\ /-----\ /--
-   x       x Valid x       x       x
+   x Valid x       x       x       x
 --/ \-----/ \-----/ \-----/ \-----/ \--
 
 lsu respValid
 --\ /-----\ /-----\ /-----\ /-----\ /--
-   x       x       x       x Valid x
+   x       x       x Valid x       x
 --/ \-----/ \-----/ \-----/ \-----/ \--
 
 execValid

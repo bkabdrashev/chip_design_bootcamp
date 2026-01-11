@@ -30,7 +30,7 @@ module ifu (
   assign inst = io_rdata;
   always_comb begin
     io_reqValid = 1'b0;
-    respValid   = 1'b0;
+    respValid   = io_respValid;
     next_state  = curr_state;
     io_addr     = pc;
     case (curr_state)
