@@ -49,7 +49,7 @@ module exu (
       is_inst_retired <= 1'b0;
     end else begin
       curr_state <= next_state;
-      is_inst_retired <= reqValid;
+      is_inst_retired <= respValid;
     end
   end
 
@@ -87,7 +87,6 @@ module exu (
         end
       end
       EXU_EXECUTE: begin
-        respValid  = 1'b1;
         next_state = EXU_STALL_IDU;
         if (reqValid) begin
           next_state = lsu_or_exec;

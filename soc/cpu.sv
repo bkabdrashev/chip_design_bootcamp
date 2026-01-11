@@ -205,13 +205,16 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .imm      (idu_imm),
     .inst_type(idu_inst_type));
 
+  logic is_start;
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       ebreak <= 1'b0;
       ifu_reqValid <= 1'b0;
+      is_start <= 1'b1;
     end else begin
+      is_start <= 1'b0;
       ebreak <= idu_inst_type == INST_EBREAK || ebreak;
-      ifu_reqValid <= 1'b1;
+      ifu_reqValid <= exu_respValid || is_start;
     end
   end
 

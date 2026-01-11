@@ -31,8 +31,15 @@ struct Vcpucpu {
   uint8_t flash[FLASH_SIZE];
   uint8_t uart[UART_SIZE];
 
-  uint8_t io_ifu_reqValid;
-  uint8_t io_lsu_reqValid;
+  uint8_t  io_ifu_reqValid;
+  uint32_t io_ifu_addr;
+
+  uint8_t  io_lsu_reqValid;
+  uint32_t io_lsu_addr;
+  uint32_t io_lsu_wdata;
+  uint32_t io_lsu_wmask;
+  uint32_t io_lsu_wen;
+
   uint64_t io_ifu_respValid_ticks;
   uint64_t io_lsu_respValid_ticks;
   uint64_t io_ifu_waitRespValid;
@@ -57,6 +64,8 @@ struct TestBenchConfig {
   uint64_t seed       = 0;
   uint64_t max_tests  = 0;
   uint32_t n_insts    = 0;
+  uint64_t mem_delay_min = 0;
+  uint64_t mem_delay_max = 0;
 };
 
 struct TestBench {
@@ -80,9 +89,12 @@ struct TestBench {
   VerilatedContext* contextp;
   VSoC* vsoc;
   VerilatedVcdC* trace;
+  std::mt19937* random_gen;
 
   size_t    flash_size;
   uint32_t  n_insts;
+  uint64_t  mem_delay_min;;
+  uint64_t  mem_delay_max;;
   uint32_t* insts;
 
   uint64_t trace_dumps;
@@ -120,6 +132,8 @@ TestBench new_testbench(TestBenchConfig config) {
     .seed       = config.seed,
     .max_tests  = config.max_tests,
     .n_insts    = config.n_insts,
+    .mem_delay_min = config.mem_delay_min,
+    .mem_delay_max = config.mem_delay_max,
     .trace_dumps = 0,
     .reset_cycles = 10,
   };
@@ -168,6 +182,10 @@ TestBench new_testbench(TestBenchConfig config) {
   tb.gcpu->vsoc_uart = &tb.vsoc_cpu->uart;
 
   tb.contextp = new VerilatedContext;
+
+  std::random_device rand_device;
+  std::mt19937* gen = new std::mt19937(rand_device());
+  tb.random_gen = gen;
 
   if (tb.is_trace) {
     Verilated::traceEverOn(true);
@@ -475,8 +493,10 @@ BreakCode vcpu_subtick(TestBench* tb) {
     tb->vcpu->io_ifu_respValid = 0;
     if (tb->vcpu->io_ifu_reqValid) {
       tb->vcpu->io_ifu_respValid = 0;
-      tb->vcpu_cpu->io_ifu_reqValid = 1;
-      tb->vcpu_cpu->io_ifu_waitRespValid = 2;
+      tb->vcpu_cpu->io_ifu_reqValid = tb->vcpu->io_ifu_reqValid;
+      tb->vcpu_cpu->io_ifu_addr     = tb->vcpu->io_ifu_addr;
+      uint64_t delay_ticks = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+      tb->vcpu_cpu->io_ifu_waitRespValid = delay_ticks;
     }
   }
   if (tb->vcpu_cpu->io_ifu_waitRespValid > 0) {
@@ -486,7 +506,7 @@ BreakCode vcpu_subtick(TestBench* tb) {
     tb->vcpu->io_ifu_respValid = 1;
     tb->vcpu_cpu->io_ifu_reqValid = 0;
     tb->vcpu_cpu->io_ifu_respValid_ticks = 2;
-    tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu->io_ifu_addr);
+    tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu_cpu->io_ifu_addr);
   }
 
   if (tb->vcpu_cpu->io_lsu_respValid_ticks > 0) {
@@ -496,8 +516,13 @@ BreakCode vcpu_subtick(TestBench* tb) {
     tb->vcpu->io_lsu_respValid = 0;
     if (tb->vcpu->io_lsu_reqValid) {
       tb->vcpu->io_lsu_respValid = 0;
-      tb->vcpu_cpu->io_lsu_reqValid = 1;
-      tb->vcpu_cpu->io_lsu_waitRespValid = 2;
+      tb->vcpu_cpu->io_lsu_reqValid = tb->vcpu->io_lsu_reqValid;
+      tb->vcpu_cpu->io_lsu_addr     = tb->vcpu->io_lsu_addr;
+      tb->vcpu_cpu->io_lsu_wdata    = tb->vcpu->io_lsu_wdata;
+      tb->vcpu_cpu->io_lsu_wmask    = tb->vcpu->io_lsu_wmask;
+      tb->vcpu_cpu->io_lsu_wen      = tb->vcpu->io_lsu_wen;
+      uint64_t delay_ticks = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+      tb->vcpu_cpu->io_lsu_waitRespValid = delay_ticks;
     }
   }
   if (tb->vcpu_cpu->io_lsu_waitRespValid > 0) {
@@ -507,14 +532,14 @@ BreakCode vcpu_subtick(TestBench* tb) {
     tb->vcpu->io_lsu_respValid = 1;
     tb->vcpu_cpu->io_lsu_reqValid = 0;
     tb->vcpu_cpu->io_lsu_respValid_ticks = 2;
-    v_mem_write(tb, tb->vcpu->io_lsu_wen, tb->vcpu->io_lsu_wmask, tb->vcpu->io_lsu_addr, tb->vcpu->io_lsu_wdata);
-    tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu->io_lsu_addr);
+    v_mem_write(tb, tb->vcpu_cpu->io_lsu_wen, tb->vcpu_cpu->io_lsu_wmask, tb->vcpu_cpu->io_lsu_addr, tb->vcpu_cpu->io_lsu_wdata);
+    tb->vcpu->io_lsu_rdata = v_mem_read(tb, tb->vcpu_cpu->io_lsu_addr);
   }
   return break_code;
 }
 
 BreakCode vcpu_fetch_exec(TestBench* tb) {
-  printf("============== fetch start %u tick =================\n", tb->vcpu_ticks);
+  // printf("============== fetch start %u tick =================\n", tb->vcpu_ticks);
   tb->vcpu_cpu->minstret_start = tb->vcpu_cpu->minstret;
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
@@ -523,7 +548,7 @@ BreakCode vcpu_fetch_exec(TestBench* tb) {
     vcpu_tick(tb);
     break_code = vcpu_subtick(tb);
   }
-  printf("============== fetch end   %u tick =================\n", tb->vcpu_ticks);
+  // printf("============== fetch end   %u tick =================\n", tb->vcpu_ticks);
   return break_code;
 }
 
@@ -796,22 +821,20 @@ bool test_random(TestBench* tb) {
   do {
     uint32_t inst_count = 0;
     printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);
-    std::random_device rand_device;
-    std::mt19937 gen(rand_device());
-    gen.seed(seed);
+    tb->random_gen->seed(seed);
     for (uint32_t rd = 1; rd < N_REGS; rd++) {
       // NOTE: uart mem is not ever generated since uart is not fully implemented in the golden model
       uint32_t mem_start_choice[3] = {FLASH_START >> 12, MEM_START >> 12, UART_START >> 12};
       uint32_t mem_size_choice[3]  = {FLASH_SIZE, MEM_SIZE, UART_SIZE };
-      uint8_t  mem_rand            = random_range(&gen, 0, 2);
+      uint8_t  mem_rand            = random_range(tb->random_gen, 0, 2);
       uint32_t start = mem_start_choice[mem_rand];
       uint32_t size  = mem_size_choice[mem_rand];
       uint32_t base  = start + (size >> 12) / 2;
       tb->insts[inst_count++] = lui(base, rd);
-      tb->insts[inst_count++] = addi(random_bits(&gen, 12) % size + size / 2, rd, rd);
+      tb->insts[inst_count++] = addi(random_bits(tb->random_gen, 12) % size + size / 2, rd, rd);
     }
     for (uint32_t i = 0; i < tb->n_insts - 2*(N_REGS-1); i++) {
-      tb->insts[inst_count++] = random_instruction(&gen, tb->inst_flags);
+      tb->insts[inst_count++] = random_instruction(tb->random_gen, tb->inst_flags);
     }
 
     // print_all_instructions(tb);
@@ -833,12 +856,13 @@ bool test_random(TestBench* tb) {
 static void usage(const char* prog) {
   fprintf(stderr,
     "Usage:\n"
-    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [check] [timeout <cycles>] [seed <number>] bin    <path>\n"
-    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [check] [timeout <cycles>] [seed <number>] random <tests> <n_insts> <JBLSCE | all>\n"
+    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin    <path>\n"
+    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] random <tests> <n_insts> <JBLSCE | all>\n"
     "    vsoc|vcpu|gold     : select at least one to run: vsoc -- verilated SoC, vcpu -- verilated CPU, gold -- Golden Model\n"
     "    [trace <path>]     : saves the trace of the run at <path> (only for vcpu and vsoc)\n"
     "    [cycles]           : shows every 1'000'000 cycles\n"
     "    [memcmp]           : compare full memory\n"
+    "    [delay <cycles> <cycles>]   : vcpu random delay in [<cycles>, <cycles>) for memory read/write\n"
     "    [check]            : on ebreak check a0 == 0, otherwise test failed\n"
     "    [timeout <cycles>] : timeout after <cycles> cycles\n"
     "    [seed <number>]    : set initial seed to <number>\n"
@@ -913,6 +937,22 @@ int main(int argc, char** argv, char** env) {
           goto exit_label;
         }
         config.max_cycles = std::stoull(argv[curr_arg++]);
+      }
+      else if (streq(mode, "delay")) {
+        if (config.mem_delay_min || config.mem_delay_max) {
+          fprintf(stderr, "[ERROR]: second memory delay\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto exit_label;
+        }
+        if (curr_arg + 1 >= argc) {
+          fprintf(stderr, "[ERROR]: 'delay' requires a <number> <number>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto exit_label;
+        }
+        config.mem_delay_min = std::stoull(argv[curr_arg++]);
+        config.mem_delay_max = std::stoull(argv[curr_arg++]);
       }
       else if (streq(mode, "seed")) {
         if (config.seed) {
