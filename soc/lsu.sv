@@ -148,7 +148,7 @@ module lsu (
   end
 
   always_comb begin
-    io_reqValid    = reqValid;
+    io_reqValid    = 1'b0;
     respValid      = 1'b0;
     is_second_part = 1'b0;
     first_rdata    = io_rdata[31:8];
@@ -177,6 +177,7 @@ module lsu (
           respValid  = 1'b1;
         end
         else begin
+          io_reqValid   = 1'b1;
           next_state = LSU_WAIT_ONE;
         end
       end

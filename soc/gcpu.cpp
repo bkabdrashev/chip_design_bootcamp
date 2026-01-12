@@ -74,11 +74,11 @@ struct Vuart {
 struct VSoCcpu {
   uint8_t & ebreak;
   uint32_t& pc;
-  uint8_t & is_instret;
   uint64_t& mcycle;
   uint64_t& minstret;
   VlUnpacked<uint32_t, 16>&  regs;
   VlUnpacked<uint16_t, 16777216>& mem;
+  uint64_t minstret_start;
   Vuart uart;
 };
 
@@ -89,9 +89,11 @@ struct Gcpu {
   uint8_t mem[MEM_SIZE+4];
   uint8_t flash[FLASH_SIZE+4];
 
-  uint8_t ebreak;
-  bool    is_not_mapped;
-  VerboseLevel verbose = VerboseFailed;
+  uint8_t ebreak           = false;
+  bool    is_not_mapped    = false;
+  bool    is_mem_write     = false;
+  uint32_t written_address = 0;
+  VerboseLevel verbose     = VerboseFailed;
   Vuart*  vuart;
 };
 
@@ -115,7 +117,9 @@ void g_flash_init(Gcpu* cpu, uint8_t* data, uint32_t size) {
 }
 
 void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t wdata) {
+  cpu->is_mem_write = wen;
   if (wen) {
+    cpu->written_address = addr;
     if (addr >= FLASH_START && addr < FLASH_END-3) {
       cpu->is_not_mapped = true;
       if (cpu->verbose >= VerboseWarning) {

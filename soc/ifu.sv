@@ -29,8 +29,8 @@ module ifu (
 
   assign inst = io_rdata;
   always_comb begin
-    io_reqValid = reqValid;
-    respValid   = io_respValid;
+    io_reqValid = 1'b0;
+    respValid   = 1'b0;
     next_state  = curr_state;
     io_addr     = pc;
     case (curr_state)

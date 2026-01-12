@@ -55,9 +55,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic [REG_W_END:0] rf_rdata2;
 
   logic [REG_W_END:0] ifu_inst;
-  /* verilator lint_off UNUSEDSIGNAL */
-  logic               is_inst_retired;
-  /* verilator lint_on UNUSEDSIGNAL */
   logic               ifu_respValid;
   logic               ifu_reqValid;
 
@@ -181,7 +178,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
 
     .lsu_respValid  (lsu_respValid),
     .is_lsu_inst    (is_lsu_inst),
-    .is_inst_retired(is_inst_retired),
 
     .lsu_rdata(lsu_rdata),
     .csr_rdata(csr_rdata),

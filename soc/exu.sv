@@ -6,7 +6,6 @@ module exu (
 
   input  logic               lsu_respValid,
   input  logic               is_lsu_inst,
-  output logic               is_inst_retired,
 
   input  logic [REG_W_END:0] lsu_rdata,
   input  logic [REG_W_END:0] csr_rdata,
@@ -46,10 +45,8 @@ module exu (
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       curr_state <= EXU_RESET;
-      is_inst_retired <= 1'b0;
     end else begin
       curr_state <= next_state;
-      is_inst_retired <= respValid;
     end
   end
 

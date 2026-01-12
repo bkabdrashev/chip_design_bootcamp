@@ -21,7 +21,6 @@ typedef VysyxSoCTop VSoC;
 struct Vcpucpu {
   uint8_t & ebreak;
   uint32_t& pc;
-  uint8_t & is_instret;
   uint64_t& mcycle;
   uint64_t& minstret;
   VlUnpacked<uint32_t, 16>&  regs;
@@ -148,7 +147,6 @@ TestBench new_testbench(TestBenchConfig config) {
   tb.vsoc_cpu = new VSoCcpu{
     .ebreak      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__ebreak,
     .pc          = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__pc,
-    .is_instret  = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_inst_retired,
     .mcycle      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__minstret,
     .regs        = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_rf__DOT__regs,
@@ -177,7 +175,6 @@ TestBench new_testbench(TestBenchConfig config) {
   tb.vcpu_cpu = new Vcpucpu {
     .ebreak      = tb.vcpu->rootp->cpu__DOT__ebreak,
     .pc          = tb.vcpu->rootp->cpu__DOT__pc,
-    .is_instret  = tb.vcpu->rootp->cpu__DOT__is_inst_retired,
     .mcycle      = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__minstret,
     .regs        = tb.vcpu->rootp->cpu__DOT__u_rf__DOT__regs,
@@ -371,11 +368,12 @@ void vsoc_reset(TestBench* tb) {
 }
 
 void vsoc_fetch_exec(TestBench* tb) {
+  tb->vsoc_cpu->minstret_start = tb->vsoc_cpu->minstret;
   while (1) {
     vsoc_cycle(tb);
     if (tb->max_cycles && tb->vsoc_cycles >= tb->max_cycles) break;
     if (tb->vsoc_cpu->ebreak) break;
-    if (tb->vsoc_cpu->is_instret) break;
+    if (tb->vsoc_cpu->minstret != tb->vsoc_cpu->minstret_start) break;
   }
 }
 
@@ -405,7 +403,9 @@ uint32_t v_mem_read(TestBench* tb, uint32_t addr) {
       tb->vcpu_cpu->mem[addr+1] <<  8 | tb->vcpu_cpu->mem[addr+0] <<  0 ;
   }
   else {
-    // printf("[WARNING]: mem read  memory is not mapped 0x%x\n", addr);
+    if (tb->verbose >= VerboseWarning) {
+      printf("[WARNING]: vcpu mem read  memory is not mapped 0x%x\n", addr);
+    }
   }
   return result;
 }
@@ -414,7 +414,9 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
   if (wen) {
     if (addr >= FLASH_START && addr < FLASH_END-3) {
       // NOTE: flash is read only
-      // printf("[WARNING]: attempt at writing flash, which is read only\n");
+      if (tb->verbose >= VerboseWarning) {
+        printf("[WARNING]: vcpu attempt at writing flash, which is read only\n");
+      }
     }
     else if (addr >= UART_START && addr < UART_END-3) {
       addr -= UART_START;
@@ -441,7 +443,9 @@ void v_mem_write(TestBench* tb, uint8_t wen, uint8_t wbmask, uint32_t addr, uint
       if (wbmask & 0b1000) tb->vcpu_cpu->mem[addr + 3] = (wdata >> 24) & 0xff;
     }
     else {
-      // printf("[WARNING]: mem write memory is not mapped 0x%x\n", addr);
+      if (tb->verbose >= VerboseWarning) {
+        printf("[WARNING]: vcpu mem write memory is not mapped 0x%x\n", addr);
+      }
     }
   }
 }
@@ -461,6 +465,7 @@ void vcpu_tick(TestBench* tb) {
   tb->vcpu_ticks++;
   tb->vcpu_cycles = tb->vcpu_ticks / 2;
   if (tb->is_cycles && tb->vcpu_ticks % 2'000'000 == 0) printf("[INFO] vcpu cycles: %lu\n", tb->vcpu_cycles);
+  printf("cpu tick: %lu\n", tb->vcpu_ticks);
 
   tb->vcpu->clock ^= 1;
   tb->vcpu->eval();
@@ -532,12 +537,13 @@ void vcpu_subtick(TestBench* tb) {
   }
   if (tb->vcpu_cpu->io_ifu_respValid_ticks == 0) {
     tb->vcpu->io_ifu_respValid = 0;
-  }
-  if (tb->vcpu->io_ifu_reqValid && !tb->vcpu_cpu->io_ifu_reqValid) {
-    tb->vcpu_cpu->io_ifu_reqValid = tb->vcpu->io_ifu_reqValid;
-    tb->vcpu_cpu->io_ifu_addr     = tb->vcpu->io_ifu_addr;
-    uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
-    tb->vcpu_cpu->io_ifu_waitRespValid = delay_ticks;
+    if (tb->vcpu->io_ifu_reqValid && !tb->vcpu_cpu->io_ifu_reqValid) {
+      tb->vcpu_cpu->io_ifu_reqValid = tb->vcpu->io_ifu_reqValid;
+      tb->vcpu_cpu->io_ifu_addr     = tb->vcpu->io_ifu_addr;
+      uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+      tb->vcpu_cpu->io_ifu_waitRespValid = delay_ticks;
+      printf("delay_ticks: %lu, address: 0x%x\n", delay_ticks, tb->vcpu_cpu->io_ifu_addr);
+    }
   }
   if (tb->vcpu_cpu->io_ifu_waitRespValid > 0) {
     tb->vcpu_cpu->io_ifu_waitRespValid--;
@@ -547,6 +553,7 @@ void vcpu_subtick(TestBench* tb) {
     tb->vcpu_cpu->io_ifu_reqValid = 0;
     tb->vcpu_cpu->io_ifu_respValid_ticks = 2;
     tb->vcpu->io_ifu_rdata = v_mem_read(tb, tb->vcpu_cpu->io_ifu_addr);
+    printf("ifu read: 0x%x\n", tb->vcpu->io_ifu_rdata);
   }
 
   if (tb->vcpu_cpu->io_lsu_respValid_ticks > 0) {
@@ -554,15 +561,15 @@ void vcpu_subtick(TestBench* tb) {
   }
   if (tb->vcpu_cpu->io_lsu_respValid_ticks == 0) {
     tb->vcpu->io_lsu_respValid = 0;
-  }
-  if (tb->vcpu->io_lsu_reqValid && !tb->vcpu_cpu->io_lsu_reqValid) {
-    tb->vcpu_cpu->io_lsu_reqValid = tb->vcpu->io_lsu_reqValid;
-    tb->vcpu_cpu->io_lsu_addr     = tb->vcpu->io_lsu_addr;
-    tb->vcpu_cpu->io_lsu_wdata    = tb->vcpu->io_lsu_wdata;
-    tb->vcpu_cpu->io_lsu_wmask    = tb->vcpu->io_lsu_wmask;
-    tb->vcpu_cpu->io_lsu_wen      = tb->vcpu->io_lsu_wen;
-    uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
-    tb->vcpu_cpu->io_lsu_waitRespValid = delay_ticks;
+    if (tb->vcpu->io_lsu_reqValid && !tb->vcpu_cpu->io_lsu_reqValid) {
+      tb->vcpu_cpu->io_lsu_reqValid = tb->vcpu->io_lsu_reqValid;
+      tb->vcpu_cpu->io_lsu_addr     = tb->vcpu->io_lsu_addr;
+      tb->vcpu_cpu->io_lsu_wdata    = tb->vcpu->io_lsu_wdata;
+      tb->vcpu_cpu->io_lsu_wmask    = tb->vcpu->io_lsu_wmask;
+      tb->vcpu_cpu->io_lsu_wen      = tb->vcpu->io_lsu_wen;
+      uint64_t delay_ticks          = 2 * random_range(tb->random_gen, tb->mem_delay_min, tb->mem_delay_max);
+      tb->vcpu_cpu->io_lsu_waitRespValid = delay_ticks;
+    }
   }
   if (tb->vcpu_cpu->io_lsu_waitRespValid > 0) {
     tb->vcpu_cpu->io_lsu_waitRespValid--;
@@ -577,17 +584,15 @@ void vcpu_subtick(TestBench* tb) {
 }
 
 BreakCode vcpu_fetch_exec(TestBench* tb) {
-  // printf("============== fetch start %u tick =================\n", tb->vcpu_ticks);
   tb->vcpu_cpu->minstret_start = tb->vcpu_cpu->minstret;
+  printf("============== fetch#%u start %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
     vcpu_tick(tb);
     vcpu_subtick(tb);
-    vcpu_tick(tb);
-    vcpu_subtick(tb);
     break_code = vcpu_break_code(tb);
   }
-  // printf("============== fetch end   %u tick =================\n", tb->vcpu_ticks);
+  printf("============== fetch#%u end   %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
   return break_code;
 }
 
@@ -609,8 +614,8 @@ bool compare_mem(uint64_t sim_time, uint32_t address, uint32_t r, uint32_t g) {
 
 bool compare_vsoc_gold(TestBench* tb) {
   bool result = true;
-  result &= compare_reg(tb->vsoc_cycles, "vsoc.ebreak",   tb->vsoc_cpu->ebreak,   tb->gcpu->ebreak);
-  result &= compare_reg(tb->vsoc_cycles, "vsoc.pc    ",   tb->vsoc_cpu->pc,       tb->gcpu->pc);
+  result &= compare_reg(tb->vsoc_cycles, "vsoc.ebreak  ",   tb->vsoc_cpu->ebreak,   tb->gcpu->ebreak);
+  result &= compare_reg(tb->vsoc_cycles, "vsoc.pc      ",   tb->vsoc_cpu->pc,       tb->gcpu->pc);
   for (uint32_t i = 0; i < N_REGS; i++) {
     char digit0 = i%10 + '0';
     char digit1 = i/10 + '0';
@@ -619,6 +624,11 @@ bool compare_vsoc_gold(TestBench* tb) {
   }
   if (tb->is_memcmp) {
     result &= memcmp(tb->gcpu->mem, &tb->vsoc_cpu->mem.m_storage[0], MEM_SIZE) == 0;
+  }
+  else if (tb->gcpu->is_mem_write) {
+    uint32_t v = ((uint32_t*)tb->vsoc_cpu->mem.m_storage)[tb->gcpu->written_address];
+    uint32_t g = g_mem_read(tb->gcpu, tb->gcpu->written_address);
+    result &= compare_mem(tb->vsoc_cycles, tb->gcpu->written_address, v, g);
   }
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
@@ -632,8 +642,8 @@ bool compare_vsoc_gold(TestBench* tb) {
 
 bool compare_vcpu_gold(TestBench* tb) {
   bool result = true;
-  result &= compare_reg(tb->vcpu_cycles, "vcpu.ebreak",   tb->vcpu_cpu->ebreak,   tb->gcpu->ebreak);
-  result &= compare_reg(tb->vcpu_cycles, "vcpu.pc    ",   tb->vcpu_cpu->pc,       tb->gcpu->pc);
+  result &= compare_reg(tb->vcpu_cycles, "vcpu.ebreak  ",   tb->vcpu_cpu->ebreak,   tb->gcpu->ebreak);
+  result &= compare_reg(tb->vcpu_cycles, "vcpu.pc      ",   tb->vcpu_cpu->pc,       tb->gcpu->pc);
   for (uint32_t i = 0; i < N_REGS; i++) {
     char digit0 = i%10 + '0';
     char digit1 = i/10 + '0';
@@ -642,6 +652,16 @@ bool compare_vcpu_gold(TestBench* tb) {
   }
   if (tb->is_memcmp) {
     result &= memcmp(tb->gcpu->mem, tb->vcpu_cpu->mem, MEM_SIZE) == 0;
+  }
+  else if (tb->gcpu->is_mem_write) {
+    uint32_t address0 = tb->gcpu->written_address & ~3;
+    uint32_t address4 = tb->gcpu->written_address & ~3 + 4;
+    uint32_t v = v_mem_read(tb,       address0);
+    uint32_t g = g_mem_read(tb->gcpu, address0);
+    result &= compare_mem(tb->vsoc_cycles, tb->gcpu->written_address, v, g);
+    v = v_mem_read(tb,       address4);
+    g = g_mem_read(tb->gcpu, address4);
+    result &= compare_mem(tb->vsoc_cycles, tb->gcpu->written_address, v, g);
   }
   if (!result) {
     for (uint32_t i = 0; i < MEM_SIZE; i++) {
@@ -655,8 +675,8 @@ bool compare_vcpu_gold(TestBench* tb) {
 
 bool compare_vcpu_vsoc(TestBench* tb) {
   bool result = true;
-  result &= compare_reg(tb->vsoc_cycles, "ebreak",   tb->vcpu_cpu->ebreak,   tb->vsoc_cpu->ebreak);
-  result &= compare_reg(tb->vsoc_cycles, "pc    ",   tb->vcpu_cpu->pc,       tb->vsoc_cpu->pc);
+  result &= compare_reg(tb->vsoc_cycles, "ebreak  ",   tb->vcpu_cpu->ebreak,   tb->vsoc_cpu->ebreak);
+  result &= compare_reg(tb->vsoc_cycles, "pc      ",   tb->vcpu_cpu->pc,       tb->vsoc_cpu->pc);
   for (uint32_t i = 0; i < N_REGS; i++) {
     char digit0 = i%10 + '0';
     char digit1 = i/10 + '0';
@@ -691,11 +711,11 @@ bool test_instructions(TestBench* tb) {
     g_flash_init(tb->gcpu, (uint8_t*)tb->insts, tb->flash_size);
   }
 
-  tb->vsoc_cycles  = 0;
+  tb->vsoc_cycles = 0;
   tb->vcpu_cycles = 0;
   tb->instrets    = 0;
-  tb->vsoc_ticks   = 0;
-  tb->vcpu_ticks  = 0;
+  tb->vsoc_ticks  = 0;
+  tb->vcpu_ticks  = 1;
 
   bool is_test_success = true;
   while (1) {
@@ -721,7 +741,7 @@ bool test_instructions(TestBench* tb) {
         }
       }
       // NOTE: cycles are offset by number of cycles during the reset, since reset period is doubled for vsoc
-      is_test_success &= compare_reg(tb->vsoc_ticks, "vsoc.mcycle",   tb->vsoc_cpu->mcycle,   tb->vsoc_cycles - tb->reset_cycles);
+      is_test_success &= compare_reg(tb->vsoc_ticks, "vsoc.mcycle  ",   tb->vsoc_cpu->mcycle,   tb->vsoc_cycles - tb->reset_cycles);
       is_test_success &= compare_reg(tb->vsoc_ticks, "vsoc.minstret", tb->vsoc_cpu->minstret, tb->instrets);
     }
 
@@ -734,7 +754,7 @@ bool test_instructions(TestBench* tb) {
           is_test_success=false;
         }
       }
-      is_test_success &= compare_reg(tb->vcpu_ticks, "vcpu.mcycle",   tb->vcpu_cpu->mcycle,   tb->vcpu_cycles);
+      is_test_success &= compare_reg(tb->vcpu_ticks, "vcpu.mcycle  ",   tb->vcpu_cpu->mcycle,   tb->vcpu_cycles);
       is_test_success &= compare_reg(tb->vcpu_ticks, "vcpu.minstret", tb->vcpu_cpu->minstret, tb->instrets);
     }
 
