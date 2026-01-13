@@ -944,12 +944,18 @@ bool test_instructions(TestBench* tb) {
   }
   if (tb->is_vsoc) {
     if (tb->verbose >= VerboseInfo4) {
-      printf("[INFO] vsoc finished:%u cycles, %u retired instructions\n", tb->vsoc_cycles, tb->vsoc_cpu->minstret);
+      printf("[INFO] vsoc finished:\n"
+             "  cycles:  %lu\n"
+             "  instret: %lu\n",
+             tb->vsoc_cycles, tb->vsoc_cpu->minstret);
     }
   }
   if (tb->is_vcpu) {
     if (tb->verbose >= VerboseInfo4) {
-      printf("[INFO] vcpu finished:%u cycles, %u retired instructions\n", tb->vcpu_cycles, tb->vcpu_cpu->minstret);
+      printf("[INFO] vcpu finished:\n"
+             "  cycles:  %lu\n"
+             "  instret: %lu\n",
+             tb->vcpu_cycles, tb->vcpu_cpu->minstret);
     }
   }
   return is_test_success;
