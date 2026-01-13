@@ -1,6 +1,10 @@
 **/obj_dir/
 **/obj_soc/
 **/obj_cpu/
+**/obj_soc_fast/
+**/obj_cpu_fast/
+**/obj_soc_slow/
+**/obj_cpu_slow/
 *.out
 **/*.out
 *.vcd
