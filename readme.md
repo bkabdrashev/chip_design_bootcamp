@@ -5,11 +5,8 @@ To run the verilated SoC use this script:
 ./build_run.sh
 
 Usage:
-  ./build_run.sh slow [testbench_args...]  #    debug build + run
-  ./build_run.sh fast [testbench_args...]  # no debug build + run
-
-Usage:
-  testbench vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [verbose] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin|random
+  ./build_run.sh fast|slow  vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [verbose] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin|random
+    fast|slow          | fast is -Os build, slow is -g -O0 build; default is slow
     vsoc|vcpu|gold     : select at least one to run: vsoc -- verilated SoC, vcpu -- verilated CPU, gold -- Golden Model
     [trace <path>]     : saves the trace of the run at <path> (only for vcpu and vsoc)
     [cycles]           : shows every 1'000'000 cycles
