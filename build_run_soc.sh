@@ -2,7 +2,7 @@
 set -euo pipefail
 
 export VERILATOR_ROOT=/usr/share/verilator
-RTL_ROOT=/home/bekzat/chip_bootcamp/
+RTL_ROOT=/home/bekzat/chip_bootcamp
 
 DBG_CFLAGS="-g3 -O0 -fno-omit-frame-pointer"
 DBG_LDFLAGS="-g"
@@ -11,7 +11,6 @@ usage() {
   echo "Usage:"
   echo "  $0 slow [testbench_args...]  #    debug build + run"
   echo "  $0 fast [testbench_args...]  # no debug build + run"
-  echo "  $0 test                      # no debug build + test"
 }
 
 MODE="${1:-slow}"
