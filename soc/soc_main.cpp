@@ -365,13 +365,13 @@ void vsoc_tick(TestBench* tb) {
 void vsoc_cycle(TestBench* tb) {
   vsoc_tick(tb);
   vsoc_tick(tb);
-  if (tb->verbose >= VerboseInfo6 && tb->vsoc_cycles % 1'000'000 == 0) {
+  if (tb->verbose >= VerboseInfo6 && tb->vsoc_cycles % 10'000'000 == 0) {
     printf("[INFO] vsoc cycles: %lu\n", tb->vsoc_cycles);
   }
-  if (tb->verbose >= VerboseInfo5 && tb->vsoc_cycles % 10'000'000 == 0) {
+  if (tb->verbose >= VerboseInfo5 && tb->vsoc_cycles % 100'000'000 == 0) {
     printf("[INFO] vsoc cycles: %lu\n", tb->vsoc_cycles);
   }
-  if (tb->verbose >= VerboseInfo4 && tb->vsoc_cycles % 100'000'000 == 0) {
+  if (tb->verbose >= VerboseInfo4 && tb->vsoc_cycles % 1'000'000'000 == 0) {
     printf("[INFO] vsoc cycles: %lu\n", tb->vsoc_cycles);
   }
   tb->vsoc_cycles++;
