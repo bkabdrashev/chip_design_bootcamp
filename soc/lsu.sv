@@ -128,8 +128,8 @@ module lsu (
     endcase
   end
 
-  typedef enum logic [2:0] {
-    LSU_IDLE, LSU_WAIT_ONE, LSU_WAIT_MIS_ONE, LSU_WAIT_MIS_TWO, LSU_WAIT_MIS_TWO_REQ
+  typedef enum logic [1:0] {
+    LSU_IDLE, LSU_WAIT_ONE, LSU_WAIT_MIS_ONE, LSU_WAIT_MIS_TWO
   } lsu_state;
 
   lsu_state next_state;
@@ -158,7 +158,7 @@ module lsu (
           io_reqValid_d   = 1'b1;
           if (io_respValid) begin
             respValid      = ~is_misalign;
-            next_state     = is_misalign ? LSU_WAIT_MIS_TWO_REQ : LSU_IDLE;
+            next_state     = is_misalign ? LSU_WAIT_MIS_TWO : LSU_IDLE;
           end
           else begin
             next_state = is_misalign ? LSU_WAIT_MIS_ONE : LSU_WAIT_ONE;
@@ -179,18 +179,6 @@ module lsu (
       end
       LSU_WAIT_MIS_TWO: begin
         is_second_part = 1'b1;
-        if (io_respValid) begin
-          next_state  = LSU_IDLE;
-          first_rdata = first_rdata_q;
-          respValid   = 1'b1;
-        end
-        else begin
-          next_state = LSU_WAIT_MIS_TWO;
-        end
-      end
-      LSU_WAIT_MIS_TWO_REQ: begin
-        is_second_part = 1'b1;
-        io_reqValid_d  = 1'b1;
         if (io_respValid) begin
           next_state  = LSU_IDLE;
           first_rdata = first_rdata_q;
@@ -227,7 +215,6 @@ always @ * begin
     LSU_WAIT_ONE         : dbg_lsu = "LSU_WAIT_ONE";
     LSU_WAIT_MIS_ONE     : dbg_lsu = "LSU_WAIT_MIS_ONE";
     LSU_WAIT_MIS_TWO     : dbg_lsu = "LSU_WAIT_MIS_TWO";
-    LSU_WAIT_MIS_TWO_REQ : dbg_lsu = "LSU_WAIT_MIS_TWO_REQ";
     default              : dbg_lsu = "LSU_UNDEFINED";
   endcase
 end

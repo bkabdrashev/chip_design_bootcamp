@@ -1089,7 +1089,6 @@ static int streq(const char* a, const char* b) {
   return a && b && strcmp(a, b) == 0;
 }
 int main(int argc, char** argv, char** env) {
- // TODO: this has problem with ebreak ./build_run_soc.sh random 100000 100 JBCLS vcpu gold seed 647310728731491444 delay 0 10 verbose 4
   int exit_code = EXIT_SUCCESS;
 
   if (argc < 2) {
