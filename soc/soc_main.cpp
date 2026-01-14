@@ -54,7 +54,6 @@ struct Vcpucpu {
 struct TestBenchConfig {
   bool is_trace       = false;
   char* trace_file    = NULL;
-  bool is_cycles      = false;
   bool is_bin         = false;
   char* bin_file      = NULL;
   uint64_t max_cycles = 0;
@@ -77,7 +76,6 @@ struct TestBenchConfig {
 struct TestBench {
   bool  is_trace;
   char* trace_file;
-  bool  is_cycles;
   bool  is_bin;
   char* bin_file;
   uint64_t max_cycles;
@@ -123,7 +121,6 @@ TestBench new_testbench(TestBenchConfig config) {
   TestBench tb = {
     .is_trace   = config.is_trace,
     .trace_file = config.trace_file,
-    .is_cycles  = config.is_cycles,
     .is_bin     = config.is_bin,
     .bin_file   = config.bin_file,
     .max_cycles = config.max_cycles,
@@ -1038,7 +1035,6 @@ static void usage(const char* prog) {
     "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [verbose] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin|random\n"
     "    vsoc|vcpu|gold     : select at least one to run: vsoc -- verilated SoC, vcpu -- verilated CPU, gold -- Golden Model\n"
     "    [trace <path>]     : saves the trace of the run at <path> (only for vcpu and vsoc)\n"
-    "    [cycles]           : shows every 1'000'000 cycles\n"
     "    [memcmp]           : compare full memory\n"
     "    [verbose]          : verbosity level\n"
     "      0 -- None, 1 -- Error, 2 -- Failed (default), 3 -- Warning, 4 -- Info\n"
@@ -1078,9 +1074,6 @@ int main(int argc, char** argv, char** env) {
       }
       else if (streq(mode, "vcpu")) {
         config.is_vcpu = true;
-      }
-      else if (streq(mode, "cycles")) {
-        config.is_cycles = true;
       }
       else if (streq(mode, "memcmp")) {
         config.is_memcmp = true;
@@ -1231,6 +1224,7 @@ int main(int argc, char** argv, char** env) {
     if (!tb.is_gold && !tb.is_vcpu && !tb.is_vsoc) {
       printf("[ERROR] should choose at least one of gold, vcpu, vsoc\n");
       usage(argv[0]);
+      goto cleanup_label;
     }
 
     if (tb.is_bin) {
@@ -1244,7 +1238,9 @@ int main(int argc, char** argv, char** env) {
     else {
       printf("[ERROR] should choose bin or random test\n");
       usage(argv[0]);
+      goto cleanup_label;
     }
+cleanup_label:
     delete_testbench(tb);
   }
   

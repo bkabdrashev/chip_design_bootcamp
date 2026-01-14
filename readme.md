@@ -10,7 +10,6 @@ Usage:
     fast|slow          : fast is -Os build, slow is -g -O0 build; default is slow
     vsoc|vcpu|gold     : select at least one to run: vsoc -- verilated SoC, vcpu -- verilated CPU, gold -- Golden Model
     [trace <path>]     : saves the trace of the run at <path> (only for vcpu and vsoc)
-    [cycles]           : shows every 1'000'000 cycles
     [memcmp]           : compare full memory
     [verbose]          : verbosity level
       0 -- None, 1 -- Error, 2 -- Failed (default), 3 -- Warning, 4 -- Info
