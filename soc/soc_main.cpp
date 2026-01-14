@@ -148,7 +148,7 @@ TestBench new_testbench(TestBenchConfig config) {
 
   tb.vsoc = new VSoC;
   tb.vsoc_cpu = new VSoCcpu{
-    .ebreak      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__ebreak,
+    .ebreak      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__is_ebreak,
     .pc          = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__pc,
     .mcycle      = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vsoc->rootp->ysyxSoCTop__DOT__dut__DOT__asic__DOT__cpu__DOT__u_cpu__DOT__u_csr__DOT__minstret,
@@ -176,7 +176,7 @@ TestBench new_testbench(TestBenchConfig config) {
 
   tb.vcpu = new Vcpu;
   tb.vcpu_cpu = new Vcpucpu {
-    .ebreak      = tb.vcpu->rootp->cpu__DOT__ebreak,
+    .ebreak      = tb.vcpu->rootp->cpu__DOT__is_ebreak,
     .pc          = tb.vcpu->rootp->cpu__DOT__pc,
     .mcycle      = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__mcycle,
     .minstret    = tb.vcpu->rootp->cpu__DOT__u_csr__DOT__minstret,

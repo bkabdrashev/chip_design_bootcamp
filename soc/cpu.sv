@@ -75,7 +75,17 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic [REG_W_END:0] csr_rdata;
   logic [REG_W_END:0] csr_wdata;
   logic               csr_wen;
-  logic               ebreak;
+
+  logic is_ebreak;
+  logic is_instret;
+  logic is_ifu_wait;
+  logic is_lsu_wait;
+  logic is_load_seen;
+  logic is_store_seen;
+  logic is_calc_seen;
+  logic is_jump_seen;
+  logic is_branch_seen;
+  logic is_branch_taken;
 
   pc u_pc(
     .clock(clock),
@@ -126,14 +136,24 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .rdata2(rf_rdata2));
 
   csr u_csr(
-    .clock     (clock),
-    .reset     (reset),
-    .wen       (csr_wen),
-    .addr      (idu_imm[11:0]),
-    .is_instret(exu_respValid),
-    .is_ebreak (ebreak),
-    .wdata     (csr_wdata),
-    .rdata     (csr_rdata));
+    .clock(clock),
+    .reset(reset),
+
+    .is_ebreak      (is_ebreak),
+    .is_instret     (is_instret),
+    .is_ifu_wait    (is_ifu_wait),
+    .is_lsu_wait    (is_lsu_wait),
+    .is_load_seen   (is_load_seen),
+    .is_store_seen  (is_store_seen),
+    .is_calc_seen   (is_calc_seen),
+    .is_jump_seen   (is_jump_seen),
+    .is_branch_seen (is_branch_seen),
+    .is_branch_taken(is_branch_taken),
+
+    .wen  (csr_wen),
+    .addr (idu_imm[11:0]),
+    .wdata(csr_wdata),
+    .rdata(csr_rdata));
 
   assign is_lsu_inst = idu_inst_type[4];
   assign is_store    = idu_inst_type[5:3] == INST_STORE;
@@ -165,7 +185,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   assign pc_inc = pc + 4;
   always_comb begin
     pc_next = pc_inc;
-    // if (!exu_respValid)  pc_next = pc;
     if (is_pc_jump) pc_next = pc_jump;
   end
 
@@ -199,17 +218,25 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .alu_op   (idu_alu_op),
     .com_op   (idu_com_op),
     .imm      (idu_imm),
-    .inst_type(idu_inst_type));
+    .inst_type(idu_inst_type),
+    .is_ebreak      (is_ebreak),
+    .is_instret     (is_instret),
+    .is_ifu_wait    (is_ifu_wait),
+    .is_lsu_wait    (is_lsu_wait),
+    .is_load_seen   (is_load_seen),
+    .is_store_seen  (is_store_seen),
+    .is_calc_seen   (is_calc_seen),
+    .is_jump_seen   (is_jump_seen),
+    .is_branch_seen (is_branch_seen),
+    .is_branch_taken(is_branch_taken));
 
   logic is_start;
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
-      ebreak       <= 1'b0;
       ifu_reqValid <= 1'b0;
       is_start     <= 1'b1;
     end else begin
       is_start     <= 1'b0;
-      ebreak       <= idu_inst_type == INST_EBREAK || ebreak;
       ifu_reqValid <= exu_respValid || is_start;
     end
   end

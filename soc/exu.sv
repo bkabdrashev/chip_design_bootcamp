@@ -27,7 +27,18 @@ module exu (
   input  logic [ALU_OP_END:0]    alu_op,
   input  logic [COM_OP_END:0]    com_op,
   input  logic [REG_W_END:0]     imm,
-  input  logic [INST_TYPE_END:0] inst_type);
+  input  logic [INST_TYPE_END:0] inst_type,
+
+  output  logic is_ebreak,
+  output  logic is_instret,
+  output  logic is_ifu_wait,
+  output  logic is_lsu_wait,
+  output  logic is_load_seen,
+  output  logic is_store_seen,
+  output  logic is_calc_seen,
+  output  logic is_jump_seen,
+  output  logic is_branch_seen,
+  output  logic is_branch_taken);
 
 /* verilator lint_off UNUSEDPARAM */
 `include "com_defines.vh"
@@ -35,6 +46,10 @@ module exu (
 `include "alu_defines.vh"
 `include "inst_defines.vh"
 /* verilator lint_on UNUSEDPARAM */
+
+  logic is_jump;
+  logic is_branch;
+  logic is_branch_true;
 
   typedef enum logic [2:0] { EXU_START, EXU_RESET, EXU_EXECUTE, EXU_STALL_IDU, EXU_STALL_LSU } cpu_state;
 
@@ -45,13 +60,38 @@ module exu (
   always_ff @(posedge clock or posedge reset) begin
     if (reset) begin
       curr_state <= EXU_RESET;
+      is_ebreak  <= 1'b0;
     end else begin
       curr_state <= next_state;
+      is_ebreak  <= inst_type == INST_EBREAK || is_ebreak;
     end
   end
 
   assign lsu_or_exec = is_lsu_inst && ~lsu_respValid ? EXU_STALL_LSU : EXU_EXECUTE;
   assign respValid   = next_state == EXU_EXECUTE;
+
+  assign is_jump         = (inst_type == INST_JUMP) | (inst_type == INST_JUMPR);
+  assign is_branch       = inst_type == INST_BRANCH;
+  assign is_branch_true  = is_branch & com_res;
+
+  assign is_pc_jump = is_jump | is_branch_true;
+  assign pc_jump    = alu_res;
+
+  assign csr_wdata = alu_res;
+  assign lsu_wdata = rdata2;
+  assign lsu_addr  = alu_res;
+  assign rf_wen    = inst_type[3] & respValid;
+  assign csr_wen   = inst_type[5] & respValid;
+
+  assign is_instret      = respValid;
+  assign is_ifu_wait     = next_state == EXU_STALL_IDU;
+  assign is_lsu_wait     = next_state == EXU_STALL_LSU;
+  assign is_load_seen    = respValid & (inst_type[5:3] == INST_LOAD);
+  assign is_store_seen   = respValid & (inst_type[5:3] == INST_STORE);
+  assign is_calc_seen    = respValid & (inst_type[5:4] == INST_EXEC) & (inst_type[0] == INST_CALC);
+  assign is_jump_seen    = respValid & is_jump;
+  assign is_branch_seen  = respValid & is_branch;
+  assign is_branch_taken = respValid & is_branch_true;
 
   always_comb begin
     next_state = curr_state;
@@ -148,17 +188,6 @@ module exu (
       default:      rf_wdata = 0;
     endcase
   end
-
-  assign csr_wdata = alu_res;
-
-  assign lsu_wdata = rdata2;
-  assign lsu_addr  = alu_res;
-
-  assign is_pc_jump = inst_type == INST_JUMP || inst_type == INST_JUMPR || (inst_type == INST_BRANCH && com_res);
-  assign pc_jump    = alu_res;
-
-  assign rf_wen     = inst_type[3] && respValid;
-  assign csr_wen    = inst_type[5] && respValid;
 
 `ifdef verilator
 /* verilator lint_off UNUSEDSIGNAL */
