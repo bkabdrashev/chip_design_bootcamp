@@ -442,10 +442,10 @@ void print_instruction(uint32_t inst) {
 }
 
 uint32_t random_range(std::mt19937* gen, uint32_t ge, uint32_t lt) {
-  std::uniform_int_distribution<uint32_t> dist(0, (1U << lt) - 1);
-  uint32_t r = dist(*gen);
   if (ge >= lt) return 0;
-  return r % (lt-ge) + ge;
+  std::uniform_int_distribution<uint32_t> dist(ge, lt-1);
+  uint32_t r = dist(*gen);
+  return r;
 }
 
 uint32_t random_bits(std::mt19937* gen, uint32_t n) {

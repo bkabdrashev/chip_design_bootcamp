@@ -377,6 +377,9 @@ void vsoc_tick(TestBench* tb) {
   }
   tb->vsoc_ticks++;
   tb->vsoc->clock ^= 1;
+  if (tb->verbose >= VerboseInfo6) {
+    printf("vsoc tick: %lu, %lu\n", tb->vsoc_ticks, tb->trace_dumps);
+  }
 }
 
 void vsoc_cycle(TestBench* tb) {
@@ -408,11 +411,17 @@ void vsoc_reset(TestBench* tb) {
 
 void vsoc_fetch_exec(TestBench* tb) {
   tb->vsoc_cpu->minstret_start = tb->vsoc_cpu->event_counts.minstret;
+  if (tb->verbose >= VerboseInfo5) {
+    printf("========== vsoc fetch#%u start %u tick, %u dump =================\n", tb->vsoc_cpu->minstret_start, tb->vsoc_ticks, tb->trace_dumps);
+  }
   while (1) {
     vsoc_cycle(tb);
     if (tb->max_cycles && tb->vsoc_cycles >= tb->max_cycles) break;
     if (tb->vsoc_cpu->ebreak) break;
     if (tb->vsoc_cpu->event_counts.minstret != tb->vsoc_cpu->minstret_start) break;
+  }
+  if (tb->verbose >= VerboseInfo5) {
+    printf("========== vsoc fetch#%u end   %u tick, %u dump =================\n", tb->vsoc_cpu->minstret_start, tb->vsoc_ticks, tb->trace_dumps);
   }
 }
 
@@ -673,7 +682,7 @@ void vcpu_subtick(TestBench* tb) {
 BreakCode vcpu_fetch_exec(TestBench* tb) {
   tb->vcpu_cpu->minstret_start = tb->vcpu_cpu->event_counts.minstret;
   if (tb->verbose >= VerboseInfo5) {
-    printf("============== fetch#%u start %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
+    printf("========== vcpu fetch#%u start %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
   }
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
@@ -682,7 +691,7 @@ BreakCode vcpu_fetch_exec(TestBench* tb) {
     break_code = vcpu_break_code(tb);
   }
   if (tb->verbose >= VerboseInfo5) {
-    printf("============== fetch#%u end   %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
+    printf("========== vcpu fetch#%u end   %u tick, %u dump =================\n", tb->vcpu_cpu->minstret_start, tb->vcpu_ticks, tb->trace_dumps);
   }
   return break_code;
 }
@@ -1041,9 +1050,9 @@ bool test_random(TestBench* tb) {
       uint32_t start = mem_start_choice[mem_rand];
       uint32_t size  = mem_size_choice[mem_rand];
       uint32_t base  = start + (size >> 12) / 2;
-      uint32_t offset = random_range(tb->random_gen, size/2, size);
       tb->insts[inst_count++] = lui(base, rd);
-      tb->insts[inst_count++] = addi(offset, rd, rd);
+      uint32_t offset = random_range(tb->random_gen, size/2, size);
+      tb->insts[inst_count++] = addi(random_bits(tb->random_gen, 12), rd, rd);
     }
     for (uint32_t i = 0; i < tb->n_insts - 2*(N_REGS-1); i++) {
       tb->insts[inst_count++] = random_instruction(tb->random_gen, tb->inst_flags);
