@@ -113,7 +113,9 @@ struct Gcpu {
 };
 
 void g_reset(Gcpu* cpu) {
-  printf("[INFO] gold reset\n");
+  if (cpu->verbose >= VerboseInfo4) {
+    printf("[INFO4] gold reset\n");
+  }
   // memset(cpu->mem, 0, MEM_SIZE);
   // memset(cpu->flash, 0, FLASH_SIZE);
   cpu->pc = INITIAL_PC;
@@ -130,7 +132,9 @@ void g_flash_init(Gcpu* cpu, uint8_t* data, uint32_t size) {
   for (uint32_t i = 0; i < size; i++) {
     cpu->flash[i] = data[i];
   }
-  printf("[INFO] gold flash written: %u bytes\n", size);
+  if (cpu->verbose >= VerboseInfo4) {
+    printf("[INFO4] gold flash written: %u bytes\n", size);
+  }
 }
 
 void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t wdata) {
@@ -164,7 +168,8 @@ void g_mem_write(Gcpu* cpu, uint8_t wen, uint8_t wbmask, uint32_t addr, uint32_t
   }
 }
 
-uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
+uint32_t g_mem_read(Gcpu* cpu, uint32_t un_addr) {
+  uint32_t addr = un_addr;
   uint32_t result = 0;
   if (addr >= FLASH_START && addr < FLASH_END-3) {
     addr -= FLASH_START;
@@ -212,11 +217,11 @@ uint32_t g_mem_read(Gcpu* cpu, uint32_t addr) {
   else {
     cpu->is_not_mapped = true;
     if (cpu->verbose >= VerboseWarning) {
-      printf("[WARNING]: gcpu mem read  memory is not mapped 0x%x\n", addr);
+      printf("[WARNING]: gcpu mem read  memory is not mapped 0x%x\n", un_addr);
     }
   }
   if (cpu->verbose >= VerboseInfo5) {
-    printf("[INFO5] gcpu mem read memory: 0x%x from 0x%x\n", result, addr);
+    printf("[INFO5] gcpu mem read memory: 0x%x from 0x%x\n", result, un_addr);
   }
   return result;
 }

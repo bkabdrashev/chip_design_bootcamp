@@ -640,6 +640,8 @@ void vcpu_subtick(TestBench* tb) {
     }
   }
 
+  tb->vcpu->eval();
+
   if (tb->vcpu_cpu->io_lsu_respValid_ticks > 0) {
     tb->vcpu_cpu->io_lsu_respValid_ticks--;
     if (tb->verbose >= VerboseInfo5) {
@@ -686,8 +688,8 @@ BreakCode vcpu_fetch_exec(TestBench* tb) {
   }
   BreakCode break_code = NoBreak;
   while (break_code == NoBreak) {
-    vcpu_tick(tb);
     vcpu_subtick(tb);
+    vcpu_tick(tb);
     break_code = vcpu_break_code(tb);
   }
   if (tb->verbose >= VerboseInfo5) {
@@ -979,15 +981,21 @@ bool test_instructions(TestBench* tb) {
       break;
     }
     if (tb->is_gold && !is_valid_pc_address(tb->gcpu->pc, tb->n_insts)) {
-      printf("[WARNING] gcpu not valid address: 0x%x\n", tb->gcpu->pc);
+      if (tb->verbose >= VerboseWarning) {
+        printf("[WARNING] gcpu not valid address: 0x%x\n", tb->gcpu->pc);
+      }
       break;
     }
     if (tb->is_vsoc && !is_valid_pc_address(tb->vsoc_cpu->pc, tb->n_insts)) {
-      printf("[WARNING] vsoc not valid address: 0x%x\n", tb->vsoc_cpu->pc);
+      if (tb->verbose >= VerboseWarning) {
+        printf("[WARNING] vsoc not valid address: 0x%x\n", tb->vsoc_cpu->pc);
+      }
       break;
     }
     if (tb->is_vcpu && !is_valid_pc_address(tb->vcpu_cpu->pc, tb->n_insts)) {
-      printf("[WARNING] vcpu not valid address: 0x%x\n", tb->vcpu_cpu->pc);
+      if (tb->verbose >= VerboseWarning) {
+        printf("[WARNING] vcpu not valid address: 0x%x\n", tb->vcpu_cpu->pc);
+      }
       break;
     }
     if (tb->is_random && tb->instrets > tb->n_insts) {
@@ -1040,7 +1048,9 @@ bool test_random(TestBench* tb) {
   uint64_t i_test = 0;
   do {
     uint32_t inst_count = 0;
-    printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);
+    if (tb->verbose >= VerboseInfo4) {
+      printf("======== SEED:%lu ===== %u/%u =========\n", seed, i_test, tb->max_tests);
+    }
     tb->random_gen->seed(seed);
     for (uint32_t rd = 1; rd < N_REGS; rd++) {
       // NOTE: uart mem is not ever generated since uart is not fully implemented in the golden model
