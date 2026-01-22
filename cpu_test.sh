@@ -21,5 +21,5 @@ case "$CPU" in
 esac
 
 cd $CPU_TESTS
-make ARCH=minirv-npc run cpu="$CPU" verbose=4 ALL=div
+make ARCH=minirv-npc run cpu="$CPU" verbose=4
 cd - >/dev/null
