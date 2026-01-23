@@ -105,7 +105,7 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .reset(reset),
     .wen   (icache_wen),
     .wdata (icache_wdata),
-    .addr  (icache_addr[31:2]),
+    .addr  (icache_addr[REG_W_END:2]),
     .is_hit(icache_hit),
     .rdata (icache_rdata));
 
