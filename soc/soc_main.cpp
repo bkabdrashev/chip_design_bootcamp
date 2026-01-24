@@ -284,6 +284,7 @@ static void append_to_file(FILE* f, const char* fmt, ...) {
 
   va_end(args);
 
+  fputc('\n', f);
   fflush(f);
 }
 
