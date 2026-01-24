@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
 import sys
 
-def extract_total_area(text: str) -> str:
-    # Preferred: a dedicated total line, if present
-    for line in text.splitlines():
+def extract_first_row_freq_mhz(text: str) -> str:
+    lines = text.splitlines()
+
+    # Find the first table header that contains both "Endpoint" and "Freq(MHz)"
+    header_idx = None
+    for i, line in enumerate(lines):
         s = line.strip()
-        if s.lower().startswith("total area"):
-            parts = s.split()
-            # "Total area 123.45" -> take last token if it's not just "area"
-            if len(parts) >= 3:
-                return parts[-1]
-            # If it's just "Total area" with no number, keep searching
+        if s.startswith("|") and "Endpoint" in s and "Freq(MHz)" in s:
+            header_idx = i
             break
 
-    # Fallback: take the chip area line (common in stats dumps)
-    for line in text.splitlines():
-        s = line.strip()
-        if s.startswith("Chip area for module") and ":" in s:
-            right = s.split(":", 1)[1].strip()
-            return right.split()[0]
+    if header_idx is None:
+        raise ValueError("Could not find the Endpoint/Freq(MHz) table header.")
 
-    raise ValueError("Could not find total area value.")
+    # After the header there is usually a separator line starting with '+',
+    # then the first data row starting with '|'
+    for j in range(header_idx + 1, len(lines)):
+        s = lines[j].strip()
+        if not s:
+            continue
+        if s.startswith("+"):  # table border/separator
+            continue
+        if s.startswith("|"):
+            # This should be the first data row
+            cols = [c.strip() for c in s.split("|")[1:-1]]  # fields between pipes
+            if not cols:
+                continue
+            freq = cols[-1]  # last column is Freq(MHz)
+            return freq
+
+    raise ValueError("Could not find the first data row after the table header.")
 
 def main():
     if len(sys.argv) != 2:
@@ -31,7 +42,7 @@ def main():
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         text = f.read()
 
-    print(extract_total_area(text))
+    print(extract_first_row_freq_mhz(text))
 
 if __name__ == "__main__":
     main()
