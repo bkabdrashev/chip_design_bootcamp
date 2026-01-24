@@ -2,7 +2,7 @@ YOSYS_PATH="yosys-sta"
 MICROBENCH_PATH="am-kernels/benchmarks/microbench"
 ROOT_DIR="$(pwd)"
 MEASURE_TEMP="${ROOT_DIR}/__temp_measure.txt"
-MEASURE_CSV="${ROOT_DIR}/__temp_measure.txt"
+MEASURE_CSV="${ROOT_DIR}/measure.csv"
 FREQ_TEMP="${ROOT_DIR}/__temp_freq.txt"
 DEVICE_DELAY_FILE="${ROOT_DIR}/soc/freq_defines.vh"
 

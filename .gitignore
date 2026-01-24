@@ -12,3 +12,5 @@
 *.gtkw
 **/*.gtkw
 bin
+__temp_measure.txt
+__temp_freq.txt
