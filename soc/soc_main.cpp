@@ -3,6 +3,7 @@
 #include <stdint.h>  // uint8_t
 #include <stddef.h>  // size_t
 #include <limits.h>  // SIZE_MAX
+#include <cstdarg>
 #include <random>
 #include <bitset>
 
@@ -53,9 +54,9 @@ struct Vcpucpu {
 
 struct TestBenchConfig {
   bool is_trace       = false;
-  char* trace_file    = NULL;
+  char* trace_path    = NULL;
   bool is_bin         = false;
-  char* bin_file      = NULL;
+  char* bin_path      = NULL;
   uint64_t max_cycles = 0;
 
   bool is_vsoc        = false;
@@ -71,13 +72,14 @@ struct TestBenchConfig {
   uint64_t mem_delay_min = 0;
   uint64_t mem_delay_max = 0;
   VerboseLevel verbose = VerboseFailed;
+  char* measure_path   = NULL;
 };
 
 struct TestBench {
   bool  is_trace;
-  char* trace_file;
+  char* trace_path;
   bool  is_bin;
-  char* bin_file;
+  char* bin_path;
   uint64_t max_cycles;
 
   bool is_vsoc;
@@ -100,6 +102,8 @@ struct TestBench {
   uint64_t  mem_delay_min;
   uint64_t  mem_delay_max;
   VerboseLevel verbose;
+  char* measure_path;
+  FILE* measure_file;
   uint32_t* insts;
 
   uint64_t trace_dumps;
@@ -120,9 +124,9 @@ struct TestBench {
 TestBench new_testbench(TestBenchConfig config) {
   TestBench tb = {
     .is_trace   = config.is_trace,
-    .trace_file = config.trace_file,
+    .trace_path = config.trace_path,
     .is_bin     = config.is_bin,
-    .bin_file   = config.bin_file,
+    .bin_path   = config.bin_path,
     .max_cycles = config.max_cycles,
 
     .is_vsoc    = config.is_vsoc,
@@ -139,6 +143,7 @@ TestBench new_testbench(TestBenchConfig config) {
     .mem_delay_min = config.mem_delay_min,
     .mem_delay_max = config.mem_delay_max,
     .verbose       = config.verbose,
+    .measure_path  = config.measure_path,
     .trace_dumps  = 0,
     .reset_cycles = 10,
   };
@@ -247,7 +252,10 @@ TestBench new_testbench(TestBenchConfig config) {
     else if (tb.is_vcpu) {
       tb.vcpu->trace(tb.trace, 5);
     }
-    tb.trace->open(tb.trace_file);
+    tb.trace->open(tb.trace_path);
+  }
+  if (tb.measure_path) {
+    tb.measure_file = fopen(tb.measure_path, "a");
   }
   return tb;
 }
@@ -266,9 +274,20 @@ void delete_testbench(TestBench tb) {
   delete tb.contextp;
 }
 
+static void append_to_file(FILE* f, const char* fmt, ...) {
+  if (!f || !fmt) return;
 
+  va_list args;
+  va_start(args, fmt);
 
-int read_bin_file(const char* path, uint8_t** out_data, size_t* out_size) {
+  vfprintf(f, fmt, args);
+
+  va_end(args);
+
+  fflush(f);
+}
+
+int read_bin_path(const char* path, uint8_t** out_data, size_t* out_size) {
   if (!out_data || !out_size) return 0;
 
   *out_data = NULL;
@@ -848,6 +867,19 @@ void print_finished_stat(TestBench* tb, const char* cpu_name, VEventCounts event
            event_counts.mbranch_seen,
            event_counts.mbranch_taken);
   }
+  if (tb->measure_file) {
+    append_to_file(tb->measure_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,-,-,-",
+      event_counts.minstret,
+      event_counts.mcycle,
+      event_counts.mifu_wait,
+      event_counts.mlsu_wait,
+      event_counts.mload_seen,
+      event_counts.mstore_seen,
+      event_counts.mcalc_seen,
+      event_counts.mjump_seen,
+      event_counts.mbranch_seen,
+      event_counts.mbranch_taken);
+  }
 }
 bool test_instructions(TestBench* tb) {
   if (tb->verbose >= VerboseInfo5) {
@@ -1025,9 +1057,9 @@ bool test_instructions(TestBench* tb) {
 bool test_bin(TestBench* tb) {
   uint8_t* data = NULL; size_t size = 0;
   if (tb->verbose >= VerboseInfo4) {
-    printf("[INFO] read file %s\n", tb->bin_file);
+    printf("[INFO] read file %s\n", tb->bin_path);
   }
-  int ok = read_bin_file(tb->bin_file, &data, &size);
+  int ok = read_bin_path(tb->bin_path, &data, &size);
   if (!ok) return false;
 
   tb->flash_size = size;
@@ -1095,12 +1127,13 @@ bool test_random(TestBench* tb) {
 static void usage(const char* prog) {
   fprintf(stderr,
     "Usage:\n"
-    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [verbose] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin|random\n"
+    "  %s vsoc|vcpu|gold [trace <path>] [cycles] [memcmp] [verbose] [measure <path>] [delay <cycles> <cycles>] [check] [timeout <cycles>] [seed <number>] bin|random\n"
     "    vsoc|vcpu|gold     : select at least one to run: vsoc -- verilated SoC, vcpu -- verilated CPU, gold -- Golden Model\n"
     "    [trace <path>]     : saves the trace of the run at <path> (only for vcpu and vsoc)\n"
     "    [memcmp]           : compare full memory\n"
     "    [verbose]          : verbosity level\n"
     "      0 -- None, 1 -- Error, 2 -- Failed (default), 3 -- Warning, 4 -- Info\n"
+    "    [measure <path>]   : stores measurements to output file path\n"
     "    [delay <cycles> <cycles>]   : vcpu random delay in [<cycles>, <cycles>) for memory read/write\n"
     "    [check]            : on ebreak check a0 == 0, otherwise test failed\n"
     "    [timeout <cycles>] : timeout after <cycles> cycles\n"
@@ -1156,7 +1189,7 @@ int main(int argc, char** argv, char** env) {
           exit_code = EXIT_FAILURE;
           goto exit_label;
         }
-        config.trace_file = argv[curr_arg++];
+        config.trace_path = argv[curr_arg++];
         config.is_trace = true;
       }
       else if (streq(mode, "max")) {
@@ -1214,6 +1247,15 @@ int main(int argc, char** argv, char** env) {
         }
         config.verbose = (VerboseLevel)std::stoul(argv[curr_arg++]);
       }
+      else if (streq(mode, "measure")) {
+        if (curr_arg >= argc) {
+          fprintf(stderr, "[ERROR]: 'measure' requires a <path>\n");
+          usage(argv[0]);
+          exit_code = EXIT_FAILURE;
+          goto exit_label;
+        }
+        config.measure_path = argv[curr_arg++];
+      }
       else if (streq(mode, "random")) {
         if (config.is_random) {
           fprintf(stderr, "[ERROR]: second random is not supported\n");
@@ -1267,7 +1309,7 @@ int main(int argc, char** argv, char** env) {
           goto exit_label;
         }
         config.is_bin = true;
-        config.bin_file = argv[curr_arg++];
+        config.bin_path = argv[curr_arg++];
       }
       else {
         fprintf(stderr, "[ERROR]: unknown mode '%s'\n", mode);
