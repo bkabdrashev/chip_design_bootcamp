@@ -73,8 +73,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   logic               lsu_reqValid;
 
   logic [REG_W_END:0] csr_rdata;
-  logic [REG_W_END:0] csr_wdata;
-  logic               csr_wen;
 
   logic [REG_W_END:2] icache_addr;
   logic [REG_W_END:0] icache_rdata;
@@ -159,21 +157,6 @@ start ------->|IFU|------->|IDU| -------> |LSU|
   csr u_csr(
     .clock(clock),
     .reset(reset),
-
-    .is_ebreak      (is_ebreak),
-    .is_instret     (is_instret),
-    .is_ifu_wait    (is_ifu_wait),
-    .is_lsu_wait    (is_lsu_wait),
-    .is_load_seen   (is_load_seen),
-    .is_store_seen  (is_store_seen),
-    .is_calc_seen   (is_calc_seen),
-    .is_jump_seen   (is_jump_seen),
-    .is_branch_seen (is_branch_seen),
-    .is_branch_taken(is_branch_taken),
-
-    .wen  (csr_wen),
-    .addr (idu_imm[11:0]),
-    .wdata(csr_wdata),
     .rdata(csr_rdata));
 
   assign is_lsu_inst = idu_inst_type[4];
@@ -230,12 +213,9 @@ start ------->|IFU|------->|IDU| -------> |LSU|
     .pc_jump   (pc_jump),
     .rf_wdata  (rf_wdata),
     .rf_wen    (rf_wen),
-    .csr_wen   (csr_wen),
-    .csr_wdata (csr_wdata),
     .lsu_wdata (lsu_wdata),
     .lsu_addr  (lsu_addr),
 
-    .csr_imm  (idu_rs1),
     .alu_op   (idu_alu_op),
     .com_op   (idu_com_op),
     .imm      (idu_imm),

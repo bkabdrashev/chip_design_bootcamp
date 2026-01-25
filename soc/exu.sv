@@ -16,14 +16,11 @@ module exu (
 
   output logic               is_pc_jump,
   output logic               rf_wen,
-  output logic               csr_wen,
   output logic [REG_W_END:0] pc_jump,
   output logic [REG_W_END:0] rf_wdata,
-  output logic [REG_W_END:0] csr_wdata,
   output logic [REG_W_END:0] lsu_addr,
   output logic [REG_W_END:0] lsu_wdata,
 
-  input  logic [REG_A_END:0]     csr_imm,
   input  logic [ALU_OP_END:0]    alu_op,
   input  logic [COM_OP_END:0]    com_op,
   input  logic [REG_W_END:0]     imm,
@@ -77,11 +74,9 @@ module exu (
   assign is_pc_jump = is_jump | is_branch_true;
   assign pc_jump    = alu_res;
 
-  assign csr_wdata = alu_res;
   assign lsu_wdata = rdata2;
   assign lsu_addr  = alu_res;
   assign rf_wen    = inst_type[3] & respValid;
-  assign csr_wen   = inst_type[5] & respValid;
 
   assign is_instret      = respValid;
   assign is_ifu_wait     = next_state == EXU_STALL_IDU;
@@ -149,7 +144,6 @@ module exu (
 
   always_comb begin
     case (inst_type)
-      INST_CSRI:   alu_lhs = {27'b0,  csr_imm};
       INST_JUMP:   alu_lhs = pc;
       INST_AUIPC:  alu_lhs = pc;
       INST_BRANCH: alu_lhs = pc;
@@ -160,8 +154,6 @@ module exu (
   always_comb begin
     case (inst_type)
       INST_REG:  alu_rhs = rdata2;
-      INST_CSR:  alu_rhs = csr_rdata;
-      INST_CSRI: alu_rhs = csr_rdata;
       default:   alu_rhs = imm;
     endcase
   end
