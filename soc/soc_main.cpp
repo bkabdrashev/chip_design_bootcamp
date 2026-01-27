@@ -913,7 +913,7 @@ void print_finished_stat(TestBench* tb, const char* cpu_name, VEventCounts event
            "  calc   seen:  %lu\n"
            "  jump   seen:  %lu\n"
            "  branch seen:  %lu\n"
-           "  branch taken: %lu\n",
+           "  branch taken: %lu\n"
            "  icache hits:  %lu\n",
            cpu_name,
            event_counts.mcycle,

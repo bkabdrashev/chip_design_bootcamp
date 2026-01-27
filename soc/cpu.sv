@@ -118,10 +118,12 @@ start ------->|IFU|------->|IDU| -------> |LSU|
 
   assign idu_reqValid = ifu_respValid;
   idu u_idu(
+    .clock(clock),
+    .reset(reset),
     .respValid(idu_respValid),
     .reqValid (idu_reqValid),
 
-    .inst     (ifu_inst),
+    .inst_in  (ifu_inst),
 
     .rd       (idu_rd),
     .rs1      (idu_rs1),

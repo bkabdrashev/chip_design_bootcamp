@@ -1,8 +1,11 @@
 module idu (
+  input  logic  clock,
+  input  logic  reset,
+
   input  logic                   reqValid,
   output logic                   respValid,
 
-  input  logic [REG_W_END:0]     inst,
+  input  logic [REG_W_END:0]     inst_in,
 
   output logic [REG_A_END:0]     rd,
   output logic [REG_A_END:0]     rs1,
@@ -20,7 +23,42 @@ module idu (
   `include "inst_defines.vh"
 /* verilator lint_on UNUSEDPARAM */
 
-  assign respValid = reqValid;
+  logic [REG_W_END:0] inst;
+
+  typedef enum logic {
+    IDU_IDLE, IDU_WAIT
+  } idu_state;
+
+  idu_state next_state;
+  idu_state curr_state;
+
+  always_ff @(posedge clock or posedge reset) begin
+    if (reset) begin
+      curr_state <= IDU_IDLE;
+    end else begin
+      inst       <= inst_in;
+      curr_state <= next_state;
+    end
+  end
+
+  always_comb begin
+    case (curr_state)
+      IDU_IDLE: begin
+        respValid = 1'b0;
+        next_state = IDU_IDLE;
+        if (reqValid) begin
+          next_state = IDU_WAIT;
+        end
+      end
+      IDU_WAIT: begin
+        respValid = 1'b1;
+        next_state = IDU_IDLE;
+        if (reqValid) begin
+          next_state = IDU_WAIT;
+        end
+      end
+    endcase
+  end
 
   localparam FUNCT3_SR        = 3'b101;
   localparam FUNCT3_ADD       = 3'b000;
