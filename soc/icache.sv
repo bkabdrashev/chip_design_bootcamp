@@ -10,7 +10,7 @@ module icache (
   output logic [31:0] rdata);
 
   localparam m = 2;
-  localparam n = 6;
+  localparam n = 7;
   localparam TAG_W  = 32-m-n;
   localparam DATA_W = 8 * (2**m);
 
