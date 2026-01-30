@@ -10,7 +10,7 @@ module icache (
   output logic [31:0] rdata);
 
   localparam m = 2;
-  localparam n = 7;
+  localparam n = 8;
   localparam TAG_W  = 32-m-n;
   localparam DATA_W = 8 * (2**m);
 
@@ -37,10 +37,9 @@ module icache (
   logic  [TAG_W-1:0]  tag;
   logic  [    n-1:0]  index;
   line_t              line;
-  assign tag    = addr[   31:m+n];
-  assign index  = addr[m+n-1:  m];
-  assign line   = lines[index];
-  assign rdata  = line.data;
+  assign {tag, index} = addr[31:m];
+  assign line  = lines[index];
+  assign rdata = line.data;
 
   logic  writeValid;
   logic  readValid;
